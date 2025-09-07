@@ -222,7 +222,7 @@ const TradeHistory = ({ socket }) => {
             const existingIndex = prevTrades.findIndex(t => t.id === data.ticket || t.ticket === data.ticket);
             if (existingIndex === -1) {
               // Add new trade at the beginning
-              const newTrade = {
+            const newTrade = {
                 id: data.ticket,
                 ticket: data.ticket,
                 timestamp: data.timestamp,
@@ -240,13 +240,13 @@ const TradeHistory = ({ socket }) => {
                 commission: 0,
                 swap: 0,
                 change_percent: 0,
-                comment: `TradePulse_${data.bot_id}`,
+              comment: `TradePulse_${data.bot_id}`,
                 magic: data.magic || 0,
                 is_open: true,
                 isNew: true, // Visual indicator
                 // Bot attribution
-                bot_id: data.bot_id,
-                bot_name: `Bot ${data.bot_id.split('_')[1] || data.bot_id}`,
+              bot_id: data.bot_id,
+              bot_name: data.mode === 'hft' ? 'HFT' : 'Candle',
                 is_bot_trade: true
               };
               return [newTrade, ...prevTrades];
@@ -358,6 +358,64 @@ const TradeHistory = ({ socket }) => {
     if (isNaN(num)) return '0.00%';
     const sign = num >= 0 ? '+' : '';
     return `${sign}${num.toFixed(2)}%`;
+  };
+
+  // ENHANCED: Manual trade close functionality
+  const handleCloseTrade = async (trade) => {
+    if (!trade.is_open) {
+      alert('Trade is already closed');
+      return;
+    }
+
+    const confirmClose = window.confirm(
+      `Are you sure you want to close this ${trade.type} position for ${trade.symbol}?\n\n` +
+      `Current P/L: ${formatCurrency(trade.profit)}\n` +
+      `Volume: ${trade.volume}\n` +
+      `Entry Price: ${formatCurrency(trade.price)}\n` +
+      `Current Price: ${formatCurrency(trade.current_price)}`
+    );
+
+    if (!confirmClose) return;
+
+    try {
+      setIsLoading(true);
+      
+      // Send close trade request to backend
+      const response = await fetch('http://localhost:5000/api/close_trade', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ticket: trade.ticket || trade.id,
+          symbol: trade.symbol,
+          volume: trade.volume,
+          type: trade.type
+        })
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        // Show success message
+        console.log('✅ Trade closed successfully:', result);
+        
+        // Refresh trade history to get updated data
+        setTimeout(() => {
+          fetchTradeHistory();
+        }, 1000);
+        
+        // Show success notification (you can enhance this with a toast)
+        alert(`✅ Trade #${trade.ticket || trade.id} closed successfully!\nProfit: ${formatCurrency(result.profit || trade.profit)}`);
+      } else {
+        throw new Error(result.error || 'Failed to close trade');
+      }
+    } catch (error) {
+      console.error('❌ Error closing trade:', error);
+      alert(`❌ Failed to close trade: ${error.message}`);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   if (isLoading) {
@@ -538,6 +596,7 @@ const TradeHistory = ({ socket }) => {
                   <th>Profit</th>
                   <th>Change</th>
                   <th>Bot</th>
+                  <th>Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -591,6 +650,22 @@ const TradeHistory = ({ socket }) => {
                       ) : (
                         <span className="manual-trade" title="Manual Trade">
                           👤 Manual
+                        </span>
+                      )}
+                    </td>
+                    <td className="action-column">
+                      {trade.is_open ? (
+                        <button 
+                          className="close-trade-btn"
+                          onClick={() => handleCloseTrade(trade)}
+                          title={`Close ${trade.type} position for ${trade.symbol}`}
+                          disabled={isLoading}
+                        >
+                          ❌ Close
+                        </button>
+                      ) : (
+                        <span className="closed-indicator" title="Trade already closed">
+                          ✅ Closed
                         </span>
                       )}
                     </td>

@@ -35,14 +35,20 @@ class TradingBotManager:
             'daily_stats': {}  # Track daily performance
         }
         
-        # Bot configuration
+        # Bot configuration - OPTIMIZED for frequent profitable signals
         self.config = {
             'max_risk_per_trade': 0.02,  # 2% risk per trade
-            'max_daily_trades': 10,
-            'auto_trading_enabled': False,
-            'strategy_name': 'default',
-            'stop_loss_pips': 50,
-            'take_profit_pips': 100
+            'max_daily_trades': 200,      # INCREASED: Allow more frequent trading
+            'auto_trading_enabled': True,  # FIXED: Enable auto trading by default
+            'strategy_name': 'rsi_strategy',  # OPTIMIZED: Default to RSI strategy
+            'stop_loss_pips': 15,         # OPTIMIZED: Tighter stops for frequent trading
+            'take_profit_pips': 30,       # OPTIMIZED: Quick profits (2:1 ratio)
+            'analysis_bars': 60,          # OPTIMIZED: 60 bars instead of 100
+            'market_adaptive': True,      # NEW: Enable market-adaptive thresholds
+            'risk_reward_ratio': 2.0,     # NEW: Enforce 2:1 risk/reward
+            'diagnostic_mode': False,     # NEW: Diagnostic mode for testing
+            'min_signal_confidence': 0.6, # NEW: Minimum confidence for signals
+            'enable_enhanced_signals': True  # NEW: Enable enhanced signal generation
         }
         
         # Performance tracking - start fresh for each bot instance
@@ -180,23 +186,42 @@ class TradingBotManager:
                     # Check for trading signals
                     signal = self._analyze_market()
                     
-                    # Log signal analysis for debugging
+                    # STRUCTURED DIAGNOSTIC LOGGING
+                    log.info(f"[GATE] SIGNAL_CHECK bot={self.bot_id} minute={current_minute}")
+                    
                     if signal:
                         log.info(f"🎯 SIGNAL GENERATED: {signal['type']} at {signal['price']} - {signal.get('reason', 'No reason')}")
-                        if self.config['auto_trading_enabled']:
-                            log.info("✅ Auto trading enabled - executing trade")
-                            self._execute_trade(signal)
-                            last_trade_minute = current_minute  # Update last trade minute
-                            
-                            # IMMEDIATE performance update after trade execution
-                            self._update_performance()
-                            
+                        
+                        # Check all gates before execution
+                        if not self.config['auto_trading_enabled']:
+                            log.info(f"[GATE] BLOCK {self.bot_id} reason=auto_trading_disabled")
+                            last_trade_minute = current_minute
                         else:
-                            log.warning("⚠️ Auto trading DISABLED - skipping trade execution")
-                            last_trade_minute = current_minute  # Still update to avoid spam
+                            # Check daily trade limits
+                            today_trades = self._get_today_trade_count()
+                            max_daily = self.config.get('max_daily_trades', 10)
+                            
+                            if today_trades >= max_daily:
+                                log.info(f"[GATE] BLOCK {self.bot_id} reason=max_daily_trades details=today={today_trades},max={max_daily}")
+                                last_trade_minute = current_minute
+                            else:
+                                # Check account balance and margin
+                                account_info = mt5.account_info()
+                                if not account_info or account_info.balance < 100:
+                                    log.info(f"[GATE] BLOCK {self.bot_id} reason=insufficient_balance details=balance={account_info.balance if account_info else 'None'}")
+                                    last_trade_minute = current_minute
+                                else:
+                                    log.info(f"[GATE] ALLOW {self.bot_id} reason=all_checks_passed trades_today={today_trades}/{max_daily}")
+                                    log.info("✅ Auto trading enabled - executing trade")
+                                    self._execute_trade(signal)
+                                    last_trade_minute = current_minute
+                                    
+                                    # IMMEDIATE performance update after trade execution
+                                    self._update_performance()
                     else:
-                        # Log once per minute when no signal
-                        log.info(f"📊 No signal generated at minute {current_minute} - auto_trading: {self.config['auto_trading_enabled']}")
+                        # Enhanced no-signal logging with strategy details  
+                        strategy_name = self.config.get('strategy_name', 'unknown')
+                        log.info(f"[GATE] NO_SIGNAL bot={self.bot_id} strategy={strategy_name} minute={current_minute} auto_trading={self.config['auto_trading_enabled']}")
                         last_trade_minute = current_minute
                 
                 # Update performance metrics more frequently (every 10 seconds instead of every minute)
@@ -228,15 +253,24 @@ class TradingBotManager:
     def _analyze_market(self) -> Optional[Dict]:
         """Analyze market conditions and generate trading signals"""
         try:
-            # Get recent candle data
-            rates = mt5.copy_rates_from_pos(self.symbol, mt5.TIMEFRAME_M1, 0, 100)
-            if rates is None or len(rates) < 50:
-                log.warning(f"⚠️ Insufficient candle data: {len(rates) if rates is not None else 0} candles (need 50+)")
+            # Get recent candle data - OPTIMIZED: 60 bars for 40% faster analysis
+            analysis_bars = self.config.get('analysis_bars', 60)  # Default to 60 bars
+            rates = mt5.copy_rates_from_pos(self.symbol, mt5.TIMEFRAME_M1, 0, analysis_bars)
+            min_required = min(30, analysis_bars // 2)  # Require at least half the bars
+            
+            if rates is None or len(rates) < min_required:
+                log.warning(f"⚠️ Insufficient candle data: {len(rates) if rates is not None else 0} candles (need {min_required}+ for {analysis_bars}-bar analysis)")
                 return None
             
-            # Get the current strategy
-            strategy = get_strategy(self.config['strategy_name'], self.symbol)
-            log.info(f"📈 Using strategy: {strategy.name} for {self.config['strategy_name']} with {len(rates)} candles")
+            # Apply market-adaptive configuration if enabled
+            if self.config.get('market_adaptive', False):
+                self._apply_market_adaptive_config(rates)
+            
+            # Get the current strategy with configuration
+            strategy = get_strategy(self.config['strategy_name'], self.symbol, self.config)
+            diagnostic_info = " (DIAGNOSTIC MODE)" if self.config.get('diagnostic_mode', False) else ""
+            adaptive_info = " (MARKET-ADAPTIVE)" if self.config.get('market_adaptive', False) else ""
+            log.info(f"📈 Using strategy: {strategy.name} for {self.config['strategy_name']} with {len(rates)} candles{diagnostic_info}{adaptive_info}")
             
             # Analyze using the selected strategy
             signal = strategy.analyze(rates)
@@ -251,6 +285,113 @@ class TradingBotManager:
         except Exception as e:
             log.error(f"❌ Error in market analysis: {e}")
             return None
+    
+    def _apply_market_adaptive_config(self, rates):
+        """Apply market-adaptive configuration based on current volatility"""
+        try:
+            import numpy as np
+            
+            close_prices = np.array([rate[4] for rate in rates])
+            
+            # Calculate market volatility metrics
+            recent_prices = close_prices[-min(20, len(close_prices)):]
+            price_changes = np.diff(recent_prices)
+            
+            volatility = np.std(price_changes) if len(price_changes) > 0 else 1.0
+            avg_change = np.mean(np.abs(price_changes)) if len(price_changes) > 0 else 1.0
+            
+            # Determine volatility level
+            if volatility > 2.0:
+                volatility_level = 'HIGH'
+            elif volatility > 1.0:
+                volatility_level = 'MEDIUM'
+            else:
+                volatility_level = 'LOW'
+            
+            # Calculate current RSI for adaptive thresholds
+            if len(close_prices) >= 15:
+                deltas = np.diff(close_prices[-15:])
+                gains = np.where(deltas > 0, deltas, 0)
+                losses = np.where(deltas < 0, -deltas, 0)
+                
+                avg_gain = np.mean(gains) if len(gains) > 0 else 0
+                avg_loss = np.mean(losses) if len(losses) > 0 else 1
+                
+                rs = avg_gain / avg_loss if avg_loss != 0 else 100
+                current_rsi = 100 - (100 / (1 + rs))
+            else:
+                current_rsi = 50  # Default neutral
+            
+            # Adaptive configuration based on market conditions
+            strategy_name = self.config.get('strategy_name', '')
+            
+            # RSI Strategy Adaptations
+            if 'rsi' in strategy_name.lower():
+                if volatility_level == 'HIGH':
+                    rsi_buffer = 8
+                    self.config['rsi_window'] = 6  # Very fast for high volatility
+                elif volatility_level == 'MEDIUM':
+                    rsi_buffer = 5
+                    self.config['rsi_window'] = 8  # Moderate speed
+                else:
+                    rsi_buffer = 3
+                    self.config['rsi_window'] = 10  # Slightly slower for low volatility
+                
+                # Adaptive thresholds around current RSI
+                if current_rsi < 40:
+                    self.config['rsi_buy_threshold'] = max(10, current_rsi + rsi_buffer)
+                    self.config['rsi_sell_threshold'] = min(90, current_rsi + (rsi_buffer * 2))
+                elif current_rsi > 60:
+                    self.config['rsi_sell_threshold'] = min(90, current_rsi - rsi_buffer)
+                    self.config['rsi_buy_threshold'] = max(10, current_rsi - (rsi_buffer * 2))
+                else:
+                    # Neutral zone - tight bands
+                    self.config['rsi_buy_threshold'] = max(10, current_rsi - rsi_buffer)
+                    self.config['rsi_sell_threshold'] = min(90, current_rsi + rsi_buffer)
+            
+            # Moving Average Strategy Adaptations
+            elif 'ma' in strategy_name.lower() or 'moving' in strategy_name.lower():
+                if volatility_level == 'HIGH':
+                    self.config['ma_fast'] = 2
+                    self.config['ma_slow'] = 4
+                elif volatility_level == 'MEDIUM':
+                    self.config['ma_fast'] = 3
+                    self.config['ma_slow'] = 6
+                else:
+                    self.config['ma_fast'] = 2
+                    self.config['ma_slow'] = 5
+                
+                self.config['use_ema'] = True  # Always use EMA for responsiveness
+            
+            # Breakout Strategy Adaptations
+            elif 'breakout' in strategy_name.lower():
+                if volatility_level == 'HIGH':
+                    self.config['breakout_lookback_period'] = 8
+                    self.config['breakout_threshold'] = max(0.0001, avg_change * 0.8)
+                elif volatility_level == 'MEDIUM':
+                    self.config['breakout_lookback_period'] = 6
+                    self.config['breakout_threshold'] = max(0.0001, avg_change * 0.5)
+                else:
+                    self.config['breakout_lookback_period'] = 4
+                    self.config['breakout_threshold'] = max(0.0001, avg_change * 0.3)
+            
+            # Risk management adaptations for all strategies
+            if volatility_level == 'HIGH':
+                self.config['stop_loss_pips'] = 20  # Wider stops for high volatility
+                self.config['take_profit_pips'] = 40
+            elif volatility_level == 'MEDIUM':
+                self.config['stop_loss_pips'] = 15  # Standard optimized stops
+                self.config['take_profit_pips'] = 30
+            else:
+                self.config['stop_loss_pips'] = 12  # Tighter stops for low volatility
+                self.config['take_profit_pips'] = 24
+            
+            # Log adaptive changes
+            log.info(f"🔄 Market-Adaptive Config: Volatility={volatility_level} (σ={volatility:.4f}), RSI={current_rsi:.1f}")
+            log.info(f"   • Risk: {self.config['stop_loss_pips']}/{self.config['take_profit_pips']} pips")
+            
+        except Exception as e:
+            log.warning(f"⚠️ Error in market-adaptive config: {e}, using default settings")
             
     def _execute_trade(self, signal: Dict):
         """Execute a trade based on the signal"""
@@ -315,12 +456,29 @@ class TradingBotManager:
             pip_size = 10 * symbol_info.point  # Correct pip calculation for ETHUSD
             min_distance = max(20 * pip_size, symbol_info.trade_stops_level * symbol_info.point)  # Minimum 20 pips or broker requirement
             
+            # ENHANCED SL/TP Configuration: Check all possible parameter names from frontend
+            sl_pips = (
+                self.config.get('stop_loss_pips') or 
+                self.config.get('sl_pips') or 
+                self.config.get('stopLoss') or
+                20  # Default fallback
+            )
+            tp_pips = (
+                self.config.get('take_profit_pips') or 
+                self.config.get('tp_pips') or 
+                self.config.get('takeProfit') or
+                40  # Default fallback
+            )
+            
+            log.info(f"📊 SL/TP Configuration: SL={sl_pips} pips, TP={tp_pips} pips")
+            log.info(f"📊 Available config keys: {list(self.config.keys())}")
+            
             if signal['type'] == 'BUY':
-                sl_price = current_price - max(self.config['stop_loss_pips'] * pip_size, min_distance) if self.config['stop_loss_pips'] > 0 else 0
-                tp_price = current_price + max(self.config['take_profit_pips'] * pip_size, min_distance) if self.config['take_profit_pips'] > 0 else 0
+                sl_price = current_price - max(sl_pips * pip_size, min_distance) if sl_pips > 0 else 0
+                tp_price = current_price + max(tp_pips * pip_size, min_distance) if tp_pips > 0 else 0
             else:  # SELL
-                sl_price = current_price + max(self.config['stop_loss_pips'] * pip_size, min_distance) if self.config['stop_loss_pips'] > 0 else 0
-                tp_price = current_price - max(self.config['take_profit_pips'] * pip_size, min_distance) if self.config['take_profit_pips'] > 0 else 0
+                sl_price = current_price + max(sl_pips * pip_size, min_distance) if sl_pips > 0 else 0
+                tp_price = current_price - max(tp_pips * pip_size, min_distance) if tp_pips > 0 else 0
             
             log.info(f"📊 Pip calculation: pip_size={pip_size}, min_distance={min_distance}, stops_level={symbol_info.trade_stops_level}")
 
@@ -827,6 +985,37 @@ class TradingBotManager:
         
         return self.performance
 
+    def enable_diagnostic_mode(self, enable: bool = True):
+        """Enable/disable diagnostic mode for more responsive trading"""
+        old_mode = self.config.get('diagnostic_mode', False)
+        self.config['diagnostic_mode'] = enable
+        
+        if enable:
+            # Relax trading constraints for testing
+            self.config['max_daily_trades'] = 50  # More trades allowed
+            self.config['stop_loss_pips'] = 30    # Tighter stops for testing
+            self.config['take_profit_pips'] = 60  # Smaller profits for faster cycles
+            log.info(f"🧪 DIAGNOSTIC MODE ENABLED for {self.bot_id}")
+            log.info(f"🧪 Relaxed settings: max_daily={self.config['max_daily_trades']}, sl={self.config['stop_loss_pips']}, tp={self.config['take_profit_pips']}")
+        else:
+            # Restore conservative settings
+            self.config['max_daily_trades'] = 10
+            self.config['stop_loss_pips'] = 50
+            self.config['take_profit_pips'] = 100
+            log.info(f"🧪 DIAGNOSTIC MODE DISABLED for {self.bot_id}")
+            
+        if old_mode != enable:
+            # Notify frontend about mode change
+            self.notify_updates({
+                'type': 'diagnostic_mode_change',
+                'bot_id': self.bot_id,
+                'diagnostic_mode': enable,
+                'config': self.config,
+                'timestamp': datetime.now().isoformat()
+            })
+        
+        return enable
+
     def _generate_unique_magic_number(self):
         """Generate a unique magic number for this bot instance"""
         import hashlib
@@ -998,6 +1187,35 @@ class TradingBotManager:
                     
         except Exception as e:
             log.error(f"Error detecting completed trades: {e}")
+
+    def _get_today_trade_count(self) -> int:
+        """Get number of trades executed today by this bot"""
+        try:
+            today = datetime.now().strftime('%Y-%m-%d')
+            
+            # Check lifetime stats first
+            daily_stats = self.lifetime_stats.get('daily_stats', {})
+            lifetime_today_trades = daily_stats.get(today, {}).get('trades', 0)
+            
+            # Also check session trades
+            session_today_trades = 0
+            for trade in self.lifetime_stats.get('completed_trade_history', []):
+                trade_time = trade.get('time', datetime.now())
+                if isinstance(trade_time, str):
+                    trade_time = datetime.fromisoformat(trade_time.replace('Z', ''))
+                elif not isinstance(trade_time, datetime):
+                    continue
+                    
+                if trade_time.strftime('%Y-%m-%d') == today:
+                    session_today_trades += 1
+            
+            total_today = max(lifetime_today_trades, session_today_trades)
+            log.debug(f"Today's trade count for {self.bot_id}: {total_today} (lifetime: {lifetime_today_trades}, session: {session_today_trades})")
+            return total_today
+            
+        except Exception as e:
+            log.error(f"Error getting today's trade count: {e}")
+            return 0
 
 # Global bot manager instance
 bot_manager = TradingBotManager()

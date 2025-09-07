@@ -1,283 +1,221 @@
-# 🚀 TradePulse - Advanced Trading Platform with Bot Integration
+# TradePulse 📈
 
-TradePulse is a comprehensive trading platform that combines real-time market data visualization with automated trading bot capabilities. Built with Flask/Python backend and React frontend, it integrates directly with MetaTrader 5 for live trading.
+> Advanced High-Frequency Trading (HFT) Platform with Real-Time Market Analysis
 
-## ✨ Features
+[![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://python.org)
+[![Flask](https://img.shields.io/badge/Flask-2.3+-green.svg)](https://flask.palletsprojects.com)
+[![MetaTrader5](https://img.shields.io/badge/MetaTrader5-5.0+-orange.svg)](https://www.metatrader5.com)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-### 📊 **Trading Dashboard**
-- Real-time candlestick charts with multiple timeframes
-- Live price updates via WebSocket
-- Account information and balance tracking
-- Trade history and performance analytics
-- Responsive, modern UI design
+## 🚀 Features
 
-### 🤖 **Trading Bot Integration**
-- Multiple trading strategies (MA Crossover, RSI, Breakout, Combined)
-- Real-time signal generation and execution
-- Configurable risk management
-- Live bot status monitoring
-- Custom strategy support
+### Core Trading Engine
+- **High-Frequency Trading (HFT)** - Sub-second analysis and execution
+- **Multiple Trading Strategies** - MACD, RSI, Stochastic, Breakout, VWAP, Bollinger Bands
+- **Real-Time Tick Processing** - Advanced tick data analysis with fallback mechanisms
+- **Automated Risk Management** - Configurable SL/TP with manual and ratio-based modes
+- **Multi-Bot Management** - Run multiple strategies simultaneously
 
-### 🔐 **Security & Authentication**
-- User authentication system
-- Session management
-- Secure API endpoints
-- CORS protection
+### Advanced Analytics
+- **Real-Time Candlestick Charts** - Interactive price visualization
+- **Performance Metrics** - Comprehensive trading statistics
+- **Live Market Data** - WebSocket-based real-time updates
+- **Trade History** - Detailed execution logs and analysis
 
-### 🌐 **Real-time Communication**
-- WebSocket integration for live updates
-- Bot status notifications
-- Real-time trade signals
-- Market data streaming
+### Professional Interface
+- **Modern Web Dashboard** - React-based responsive UI
+- **Real-Time Notifications** - Instant trade alerts and system status
+- **Configuration Management** - Easy strategy and risk parameter setup
+- **Multi-Timeframe Analysis** - 1M, 5M, 15M, 1H, 4H, 1D charts
 
-## 🏗️ Architecture
+## 🛠️ Technology Stack
 
-```
-TradePulse/
-├── backend/                 # Flask API Server
-│   ├── trading_bot/        # Trading Bot Package
-│   │   ├── bot_manager.py  # Main bot controller
-│   │   ├── strategies.py   # Trading strategies
-│   │   └── __init__.py     # Package init
-│   ├── candlestickData.py  # Main Flask app
-│   └── requirements.txt    # Python dependencies
-├── frontend/               # React Application
-│   ├── src/
-│   │   └── components/
-│   │       ├── Dashboard.js      # Main dashboard
-│   │       ├── TradingBot.js     # Bot control UI
-│   │       ├── CandlestickChart.js # Chart component
-│   │       ├── TradeHistory.js   # Trade history
-│   │       └── AccountInfo.js    # Account details
-│   ├── package.json        # Node dependencies
-│   └── public/             # Static files
-├── start_backend.py        # Backend startup script
-├── start_frontend.bat      # Frontend startup script
-└── TRADING_BOT_INTEGRATION.md # Bot integration guide
-```
+### Backend
+- **Python 3.8+** - Core application logic
+- **Flask** - Web framework and API
+- **Flask-SocketIO** - Real-time WebSocket communication
+- **MetaTrader5** - Trading platform integration
+- **NumPy/Pandas** - Data processing and analysis
 
-## 🚀 Quick Start
+### Frontend
+- **React.js** - Modern UI framework
+- **Socket.IO** - Real-time client communication
+- **Chart.js/Plotly** - Interactive charting
+- **Bootstrap** - Responsive design
+
+### Trading Integration
+- **MetaTrader 5** - Primary trading platform
+- **Real-Time Data Feeds** - Live market data processing
+- **Order Management** - Automated trade execution
+
+## 📦 Installation
 
 ### Prerequisites
-- Python 3.8+
-- Node.js 16+
-- MetaTrader 5 (for live trading)
-- npm or yarn
+1. **Python 3.8+** installed
+2. **MetaTrader 5** platform installed and configured
+3. **Trading account** with MT5 broker
+4. **Git** for version control
 
-### 1. **Clone and Setup**
+### Quick Start
 ```bash
-git clone <your-repo-url>
+# Clone the repository
+git clone https://github.com/yourusername/TradePulse.git
 cd TradePulse
-```
 
-### 2. **Backend Setup**
-```bash
-# Install Python dependencies
-cd backend
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install dependencies
 pip install -r requirements.txt
 
-# Or use the startup script (recommended)
-cd ..
+# Start the application
 python start_backend.py
 ```
 
-### 3. **Frontend Setup**
+### Detailed Setup
+1. **MetaTrader 5 Setup**:
+   - Install MT5 from official website
+   - Create demo/live trading account
+   - Enable algorithmic trading
+   - Configure symbol permissions
+
+2. **Python Environment**:
+   ```bash
+   # Install required packages
+   pip install MetaTrader5 Flask Flask-SocketIO numpy pandas
+   
+   # Verify MT5 connection
+   python -c "import MetaTrader5 as mt5; print('MT5 Available:', mt5.initialize())"
+   ```
+
+## 🎯 Usage
+
+### Starting the Platform
 ```bash
-# Install and start frontend
-cd frontend
-npm install
-npm start
+# Start backend server
+python start_backend.py
 
-# Or use the batch script (Windows)
-cd ..
-start_frontend.bat
+# Access web interface
+# Open browser: http://localhost:3000
 ```
 
-### 4. **Access the Application**
-- 📊 **Dashboard**: http://localhost:3000
-- 🔌 **API**: http://localhost:5000
-- 🤖 **Bot Control**: Dashboard → Trading Bot tab
+### Creating Trading Bots
+1. **Navigate to Trading Dashboard**
+2. **Click "Start New Bot"**
+3. **Configure Parameters**:
+   - Symbol (e.g., ETHUSD, EURUSD)
+   - Strategy (MACD, RSI, Breakout, etc.)
+   - Risk Management (SL/TP, lot size)
+   - Analysis interval
 
-## 🤖 Trading Bot Usage
+4. **Enable Auto Trading**
+5. **Monitor Performance**
 
-### **Starting the Bot**
-1. Navigate to the "Trading Bot" tab in the dashboard
-2. Select a trading strategy
-3. Configure risk parameters
-4. Click "Start Bot"
-
-### **Available Strategies**
-- **MA Crossover**: Moving average crossover signals
-- **RSI Strategy**: Oversold/overbought conditions
-- **Breakout Strategy**: Support/resistance breakouts
-- **Combined Strategy**: Multi-indicator consensus
-
-### **Bot Configuration**
-- **Max Risk per Trade**: 0.01 - 0.10 (1% - 10%)
-- **Max Daily Trades**: Limit trading frequency
-- **Stop Loss/Take Profit**: Risk management levels
-- **Auto Trading**: Enable/disable automatic execution
-
-## 🔧 Configuration
-
-### **Environment Variables**
-Create a `.env` file in the backend directory:
-```env
-MT5_SYMBOL=ETHUSD
-MT5_LOGIN=your_login
-MT5_PASSWORD=your_password
-MT5_SERVER=your_server
-FLASK_SECRET_KEY=your_secret_key
+### HFT Mode Configuration
+```javascript
+{
+  "mode": "HFT",
+  "analysis_interval": 5,        // seconds
+  "tick_lookback": 30,          // seconds
+  "min_signal_confidence": 0.6,
+  "max_orders_per_minute": 5,
+  "use_manual_sl_tp": true,     // ✅ RECOMMENDED
+  "stop_loss_pips": 20,
+  "take_profit_pips": 40
+}
 ```
 
-### **MetaTrader 5 Setup**
-1. Install MetaTrader 5
-2. Log in to your trading account
-3. Enable API access in Tools → Options → Expert Advisors
-4. Allow automated trading
+## 📊 Trading Strategies
 
-## 📊 API Endpoints
+### 1. MACD Strategy
+- **Signal**: Moving Average Convergence Divergence crossovers
+- **Timeframe**: 1M - 1H
+- **Best for**: Trending markets
 
-### **Authentication**
-- `POST /login` - User login
-- `POST /logout` - User logout
-- `GET /auth-check` - Check authentication status
+### 2. RSI Strategy  
+- **Signal**: Relative Strength Index overbought/oversold
+- **Timeframe**: 5M - 4H
+- **Best for**: Range-bound markets
 
-### **Market Data**
-- `GET /data` - Historical candlestick data
-- `GET /status` - Server status
-- `WebSocket /socket.io` - Real-time updates
+### 3. Breakout Strategy
+- **Signal**: Price breakouts from support/resistance
+- **Timeframe**: 1M - 1H  
+- **Best for**: Volatile markets
 
-### **Trading Bot**
-- `GET /bot/status` - Bot status
-- `POST /bot/start` - Start bot
-- `POST /bot/stop` - Stop bot
-- `GET /bot/config` - Get configuration
-- `POST /bot/config` - Update configuration
-- `GET /bot/strategies` - List strategies
+### 4. Stochastic Strategy
+- **Signal**: Stochastic oscillator crossovers
+- **Timeframe**: 1M - 1H
+- **Best for**: Sideways markets
 
-### **Account**
-- `GET /account` - Account information
-- `GET /trade-history` - Trading history
+### 5. VWAP Strategy
+- **Signal**: Volume Weighted Average Price deviations
+- **Timeframe**: 1M - 1H
+- **Best for**: Intraday trading
 
-## 🔌 WebSocket Events
+## ⚙️ Configuration
 
-### **Client → Server**
-- `set_timeframe` - Change chart timeframe
-- `bot_start` - Start trading bot
-- `bot_stop` - Stop trading bot
-- `bot_config_update` - Update bot config
-
-### **Server → Client**
-- `price_update` - Real-time price data
-- `bot_update` - Bot status updates
-- `bot_start_response` - Bot start confirmation
-- `new_trade` - New trade notifications
-
-## 🎯 Integrating Your Own Bot
-
-See [TRADING_BOT_INTEGRATION.md](TRADING_BOT_INTEGRATION.md) for detailed instructions on integrating your existing trading bot code.
-
-### **Quick Integration Steps**
-1. Copy your bot code to `backend/trading_bot/`
-2. Create a strategy class extending `BaseStrategy`
-3. Implement the `analyze()` method
-4. Add to `AVAILABLE_STRATEGIES` in `strategies.py`
-5. Test with demo account first
-
-## 🛠️ Development
-
-### **Backend Development**
-```bash
-cd backend
-python candlestickData.py
-```
-
-### **Frontend Development**
-```bash
-cd frontend
-npm start
-```
-
-### **Adding New Features**
-1. Backend: Add routes in `candlestickData.py`
-2. Frontend: Create components in `src/components/`
-3. Bot: Add strategies in `trading_bot/strategies.py`
-
-## 📈 Performance & Monitoring
-
-### **Bot Performance Metrics**
-- Total trades executed
-- Win rate percentage
-- Daily P&L tracking
-- Active trade monitoring
-- Real-time signal generation
-
-### **System Monitoring**
-- WebSocket connection status
-- MetaTrader 5 connectivity
-- API response times
-- Error logging and handling
-
-## 🔒 Security Best Practices
-
-1. **Never commit API keys** to version control
-2. **Use environment variables** for sensitive data
-3. **Test with demo accounts** before live trading
-4. **Monitor bot performance** continuously
-5. **Implement proper error handling**
-6. **Use HTTPS** in production
-7. **Regular security updates**
-
-## 🐛 Troubleshooting
-
-### **Common Issues**
-
-**Bot not starting:**
-- Check MetaTrader 5 connection
-- Verify account credentials
-- Check Python dependencies
-
-**WebSocket connection failed:**
-- Check CORS settings
-- Verify port availability (5000, 3000)
-- Check firewall settings
-
-**No market data:**
-- Ensure MetaTrader 5 is running
-- Check symbol availability
-- Verify market hours
-
-**Import errors:**
-- Install all requirements: `pip install -r backend/requirements.txt`
-- Check Python path and virtual environment
-
-### **Debug Mode**
-Enable detailed logging:
+### Risk Management
 ```python
-# In candlestickData.py
-logging.basicConfig(level=logging.DEBUG)
+RISK_CONFIG = {
+    "max_risk_per_trade": 2.0,      # % of account
+    "max_daily_loss": 5.0,          # % of account  
+    "max_concurrent_trades": 3,
+    "stop_loss_pips": 20,
+    "take_profit_pips": 40,
+    "trailing_stop": False
+}
 ```
 
-## 📝 License
+### HFT Settings
+```python
+HFT_CONFIG = {
+    "analysis_interval": 5,          # seconds
+    "tick_lookback": 30,            # seconds
+    "min_signal_confidence": 0.6,
+    "max_orders_per_minute": 5,
+    "cooldown_after_trade": 5       # seconds
+}
+```
 
-This project is licensed under the Mohib License - see the LICENSE file for details.
+## 🚨 Important Notes
+
+### Risk Disclaimer
+- **Trading involves substantial risk** of loss
+- **Past performance does not guarantee future results**
+- **Only trade with money you can afford to lose**
+- **Test thoroughly on demo accounts first**
+
+### System Requirements
+- **Stable internet connection** for real-time data
+- **MetaTrader 5** platform running
+- **Sufficient account balance** for margin requirements
+- **VPS recommended** for 24/7 operation
 
 ## 🤝 Contributing
 
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+2. Create feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit changes (`git commit -m 'Add AmazingFeature'`)
+4. Push to branch (`git push origin feature/AmazingFeature`)
+5. Open Pull Request
 
+## 📄 License
 
-## 🔄 Version History
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-- **v1.0.0** - Initial release with basic trading dashboard
-- **v1.1.0** - Added trading bot integration
-- **v1.2.0** - Multiple strategy support and enhanced UI
+## 🆘 Support
+
+- **Documentation**: [Wiki](https://github.com/yourusername/TradePulse/wiki)
+- **Issues**: [GitHub Issues](https://github.com/yourusername/TradePulse/issues)
+
+## 🏆 Acknowledgments
+
+- MetaTrader 5 for trading platform integration
+- Flask community for web framework
+- NumPy/Pandas for data processing
+- Chart.js for visualization components
 
 ---
 
-**⚠️ Disclaimer**: Trading involves risk. This software is for educational purposes. Always test with demo accounts before live trading. The developers are not responsible for any financial losses.
+**⚠️ Disclaimer**: This software is for educational and research purposes. Trading financial instruments carries risk. Always test on demo accounts first and never risk more than you can afford to lose.

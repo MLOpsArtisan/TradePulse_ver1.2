@@ -1,24 +1,27 @@
 @echo off
-echo.
-echo 🚀 Starting TradePulse Frontend...
-echo ====================================
+echo ========================================
+echo  TradePulse Frontend Startup Script  
+echo ========================================
 echo.
 
 cd frontend
 
-echo 📦 Checking dependencies...
+echo Checking Node.js dependencies...
 if not exist "node_modules" (
     echo Installing dependencies...
+    npm install
+) else (
+    echo Dependencies found, checking for updates...
     npm install
 )
 
 echo.
-echo 🌐 Starting React development server...
-echo 📊 Opening dashboard at: http://localhost:3000
-echo 🛑 Press Ctrl+C to stop
-echo ====================================
+echo Starting TradePulse Frontend Server...
+echo Frontend will be available at: http://localhost:3000
 echo.
+echo Press Ctrl+C to stop the server
+echo ========================================
 
 npm start
 
-pause 
+pause

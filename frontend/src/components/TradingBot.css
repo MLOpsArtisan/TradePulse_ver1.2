@@ -216,6 +216,81 @@
   transition: all 0.3s ease;
 }
 
+.mode-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.mode-header h3 {
+  margin: 0;
+}
+
+.mode-subtitle {
+  color: #9ca3af;
+  font-size: 0.9rem;
+  margin-bottom: 16px;
+}
+
+.mode-switch {
+  cursor: pointer;
+}
+
+.mode-switch-track {
+  position: relative;
+  width: 180px;
+  height: 36px;
+  background: rgba(31, 41, 55, 0.8);
+  border: 1px solid rgba(82, 196, 26, 0.3);
+  border-radius: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  overflow: hidden;
+}
+
+.mode-switch-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 88px;
+  height: 30px;
+  background: linear-gradient(135deg, #059669, #047857);
+  border-radius: 15px;
+  transition: transform 0.25s ease;
+}
+
+.mode-switch.hft .mode-switch-thumb {
+  transform: translateX(88px);
+}
+
+.mode-label {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #9ca3af;
+  z-index: 1;
+}
+
+.mode-label.left {
+  color: white;
+}
+
+.mode-view {
+  transition: all 0.25s ease, transform 0.25s ease;
+}
+
+.mode-view.hft {
+  border-color: rgba(59, 130, 246, 0.4);
+  box-shadow: 0 12px 30px rgba(59, 130, 246, 0.18);
+}
+
+.mode-view.candle {
+  border-color: rgba(82, 196, 26, 0.4);
+  box-shadow: 0 12px 30px rgba(82, 196, 26, 0.18);
+}
+
 .strategy-selection:hover {
   transform: translateY(-4px);
   box-shadow: 0 12px 30px rgba(82, 196, 26, 0.18);
@@ -1613,4 +1688,105 @@
   border-radius: 4px;
   padding: 4px 8px;
   margin: -4px -8px;
+}
+
+/* Enhanced Configuration Layout */
+.indicator-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  padding: 0;
+}
+
+.indicator-group {
+  background: rgba(31, 41, 55, 0.3);
+  border: 1px solid rgba(82, 196, 26, 0.1);
+  border-radius: 10px;
+  padding: 20px;
+  transition: all 0.3s ease;
+  margin-bottom: 15px;
+}
+
+.indicator-group:hover {
+  border-color: rgba(82, 196, 26, 0.4);
+  background: rgba(31, 50, 70, 0.5);
+  box-shadow: 0 2px 8px rgba(82, 196, 26, 0.1);
+}
+
+.indicator-group h5 {
+  color: #52c41a;
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0 0 12px 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(82, 196, 26, 0.3);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.config-grid-compact {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+
+.config-grid-compact .config-item {
+  margin-bottom: 0;
+}
+
+.config-grid-compact .config-item label {
+  font-size: 0.85rem;
+  color: #d1d5db;
+  margin-bottom: 5px;
+  display: block;
+  font-weight: 500;
+}
+
+.config-grid-compact .config-input {
+  padding: 10px 12px;
+  font-size: 0.9rem;
+  background: rgba(17, 24, 39, 0.9);
+  border: 1px solid rgba(75, 85, 99, 0.5);
+  border-radius: 4px;
+  color: white;
+  width: 100%;
+  transition: all 0.2s ease;
+  height: 38px;
+  box-sizing: border-box;
+}
+
+.config-grid-compact .config-input:focus {
+  border-color: #52c41a;
+  box-shadow: 0 0 0 2px rgba(82, 196, 26, 0.2);
+  outline: none;
+  background: rgba(17, 24, 39, 1);
+}
+
+.config-grid-compact .config-input:hover {
+  border-color: rgba(82, 196, 26, 0.7);
+  background: rgba(17, 24, 39, 0.95);
+}
+
+/* Responsive design for indicator groups */
+@media (max-width: 1200px) {
+  .config-grid-compact {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+  }
+}
+
+@media (max-width: 768px) {
+  .indicator-group {
+    padding: 15px;
+  }
+  
+  .config-grid-compact {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  
+  .indicator-group h5 {
+    font-size: 1rem;
+  }
 } 

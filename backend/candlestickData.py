@@ -23,9 +23,10 @@ from collections import Counter # Added for logging client counts by timeframe
 
 # Import trading bot
 from trading_bot.bot_manager import TradingBotManager
+from trading_bot.hft_manager import HFTTradingBotManager
 
 # Global bot managers dictionary
-bot_managers = {}  # bot_id -> TradingBotManager instance
+bot_managers = {}  # bot_id -> manager instance (candle or hft)
 
 # Global bot manager for backward compatibility with existing APIs
 bot_manager = TradingBotManager()
@@ -1083,10 +1084,20 @@ def _determine_bot_attribution(magic_number, comment):
         # Method 1: Check active bot managers by magic number
         for bot_id, bot_manager in bot_managers.items():
             if hasattr(bot_manager, 'unique_magic_number') and bot_manager.unique_magic_number == magic_number:
+                # Get strategy name and mode from bot manager
+                strategy = bot_manager.config.get('strategy_name', 'unknown') if hasattr(bot_manager, 'config') else 'unknown'
+                mode = getattr(bot_manager, 'mode', 'candle') if hasattr(bot_manager, 'mode') else 'candle'
+                
+                # Use new naming convention: "HFT (STRATEGY)" or "Candle (STRATEGY)"
+                mode_label = 'HFT' if mode == 'hft' else 'Candle'
+                bot_name = f"{mode_label} ({strategy.upper()})"
+                
                 return {
                     'bot_id': bot_id,
-                    'bot_name': f"Bot {bot_id.split('_')[-1] if '_' in bot_id else bot_id}",
-                    'magic_number': magic_number
+                    'bot_name': bot_name,
+                    'magic_number': magic_number,
+                    'strategy': strategy,
+                    'mode': mode
                 }
         
         # Method 2: Extract from comment pattern
@@ -1094,10 +1105,40 @@ def _determine_bot_attribution(magic_number, comment):
             if '_bot_' in comment:
                 try:
                     bot_id_part = comment.split('_bot_')[1].split('_')[0]
+                    # Check if this is an HFT trade (has HFT in comment)
+                    if '_HFT' in comment:
+                        mode = 'hft'
+                        mode_label = 'HFT'
+                    else:
+                        mode = 'candle'
+                        mode_label = 'Candle'
+                    
+                    # ENHANCED: Extract strategy from comment
+                    strategy = 'unknown'
+                    if '_HFT_' in comment:
+                        # Format: TradePulse_bot_X_HFT_SIGNAL_TYPE 
+                        strategy_part = comment.split('_HFT_')[-1] if '_HFT_' in comment else ''
+                        if strategy_part in ['BUY', 'SELL']:
+                            # Look for strategy in active bot managers
+                            for bot_id, bot_manager in bot_managers.items():
+                                if hasattr(bot_manager, 'mode') and bot_manager.mode == 'hft':
+                                    strategy = bot_manager.config.get('strategy_name', 'unknown')
+                                    break
+                            if strategy == 'unknown':
+                                strategy = 'moving_average'  # Fallback for HFT trades
+                    elif '_' in comment:
+                        parts = comment.split('_')
+                        if len(parts) > 3:
+                            strategy = parts[3] if parts[3] not in ['HFT', 'BUY', 'SELL'] else 'candle'
+                    
+                    bot_name = f"{mode_label} ({strategy.upper()})" if strategy != 'unknown' else f"{mode_label} Bot"
+                    
                     return {
                         'bot_id': f"bot_{bot_id_part}",
-                        'bot_name': f"Bot {bot_id_part}",
-                        'magic_number': magic_number
+                        'bot_name': bot_name,
+                        'magic_number': magic_number,
+                        'strategy': strategy,
+                        'mode': mode
                     }
                 except:
                     pass
@@ -1107,7 +1148,9 @@ def _determine_bot_attribution(magic_number, comment):
                 return {
                     'bot_id': 'unknown',
                     'bot_name': 'TradePulse Bot',
-                    'magic_number': magic_number
+                    'magic_number': magic_number,
+                    'strategy': 'unknown',
+                    'mode': 'unknown'
                 }
         
         # Method 3: Magic number range check for TradePulse trades
@@ -1463,7 +1506,7 @@ def get_bot_details(bot_id):
         bot_status = bot_manager.get_bot_status()
         
         # Get bot's trade history
-        bot_trade_history = bot_manager.get_trade_history()
+        bot_trade_history = bot_manager.get_trade_history() if hasattr(bot_manager, 'get_trade_history') else []
         
         # Get bot's open positions specifically
         bot_positions = []
@@ -2025,7 +2068,102 @@ def get_account():
         return jsonify({"error": "Failed to fetch account information"}), 500
 
 # --- MT5 Trade History endpoint - Returns data from connected MT5 account ---
-@app.route('/trade-history', methods=['GET'])
+@app.route('/api/close_trade', methods=['POST'])
+def close_trade():
+    """Manually close a specific trade position"""
+    try:
+        data = request.get_json()
+        ticket = data.get('ticket')
+        symbol = data.get('symbol')
+        volume = data.get('volume')
+        trade_type = data.get('type')
+        
+        if not all([ticket, symbol, volume, trade_type]):
+            return jsonify({
+                'success': False,
+                'error': 'Missing required parameters: ticket, symbol, volume, type'
+            }), 400
+        
+        log.info(f"🎯 Manual close trade request: Ticket={ticket}, Symbol={symbol}, Volume={volume}, Type={trade_type}")
+        
+        # Get current position info
+        position = mt5.positions_get(ticket=ticket)
+        if not position:
+            return jsonify({
+                'success': False,
+                'error': f'Position with ticket {ticket} not found'
+            }), 404
+        
+        position = position[0]
+        
+        # Determine close order type (opposite of position type)
+        if trade_type.upper() == 'BUY':
+            close_type = mt5.ORDER_TYPE_SELL
+        else:
+            close_type = mt5.ORDER_TYPE_BUY
+        
+        # Get current price for closing
+        current_tick = mt5.symbol_info_tick(symbol)
+        if not current_tick:
+            return jsonify({
+                'success': False,
+                'error': f'Cannot get current price for {symbol}'
+            }), 400
+        
+        close_price = current_tick.bid if trade_type.upper() == 'BUY' else current_tick.ask
+        
+        # Prepare close order
+        close_request = {
+            "action": mt5.TRADE_ACTION_DEAL,
+            "symbol": symbol,
+            "volume": float(volume),
+            "type": close_type,
+            "position": int(ticket),
+            "price": close_price,
+            "deviation": 20,
+            "magic": position.magic,
+            "comment": f"Manual_Close_{ticket}",
+            "type_time": mt5.ORDER_TIME_GTC,
+            "type_filling": mt5.ORDER_FILLING_IOC,
+        }
+        
+        log.info(f"📤 Sending close order: {close_request}")
+        
+        # Execute close order
+        result = mt5.order_send(close_request)
+        
+        if result and result.retcode == mt5.TRADE_RETCODE_DONE:
+            # Calculate final profit
+            profit = result.profit if hasattr(result, 'profit') else 0
+            
+            log.info(f"✅ Trade {ticket} closed successfully. Profit: {profit}")
+            
+            return jsonify({
+                'success': True,
+                'message': f'Trade {ticket} closed successfully',
+                'ticket': ticket,
+                'close_price': close_price,
+                'profit': profit,
+                'order_ticket': result.order
+            })
+        else:
+            error_msg = f"Close failed with retcode: {result.retcode if result else 'No response'}"
+            log.error(f"❌ {error_msg}")
+            
+            return jsonify({
+                'success': False,
+                'error': error_msg,
+                'retcode': result.retcode if result else None
+            }), 500
+            
+    except Exception as e:
+        log.error(f"❌ Error in close_trade: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/get_trade_history', methods=['GET'])
 def get_trade_history():
     """Get comprehensive trade history including bot-specific trades"""
     log.info("Received request for MT5 trade history with bot attribution")
@@ -2093,18 +2231,34 @@ def get_trade_history():
                 for trade in bot_completed_trades:
                     ticket = trade.get('ticket', 0)
                     if ticket:
+                        # Get proper bot name using new naming convention
+                        bot_manager = bot_managers.get(bot_id)
+                        if bot_manager:
+                            strategy = bot_manager.config.get('strategy_name', 'unknown') if hasattr(bot_manager, 'config') else 'unknown'
+                            mode = getattr(bot_manager, 'mode', 'candle')
+                            mode_label = 'HFT' if mode == 'hft' else 'Candle'
+                            bot_name = f"{mode_label} ({strategy.upper()})"
+                        else:
+                            bot_name = f"Bot {bot_id.split('_')[-1] if '_' in bot_id else bot_id}"
+                        
                         bot_trade_data[ticket] = {
                             'bot_id': bot_id,
-                            'bot_name': f"Bot {bot_id.split('_')[-1] if '_' in bot_id else bot_id}",
+                            'bot_name': bot_name,
                             'magic_number': trade.get('magic_number', 0)
                         }
                 
                 # Get bot's magic number for position attribution
                 if hasattr(bot_manager, 'unique_magic_number') and bot_manager.unique_magic_number:
                     magic = bot_manager.unique_magic_number
+                    # Get proper bot name using new naming convention
+                    strategy = bot_manager.config.get('strategy_name', 'unknown') if hasattr(bot_manager, 'config') else 'unknown'
+                    mode = getattr(bot_manager, 'mode', 'candle')
+                    mode_label = 'HFT' if mode == 'hft' else 'Candle'
+                    bot_name = f"{mode_label} ({strategy.upper()})"
+                    
                     bot_trade_data[f"magic_{magic}"] = {
                         'bot_id': bot_id,
-                        'bot_name': f"Bot {bot_id.split('_')[-1] if '_' in bot_id else bot_id}",
+                        'bot_name': bot_name,
                         'magic_number': magic
                     }
                     
@@ -2195,9 +2349,13 @@ def get_trade_history():
                     if '_bot_' in comment:
                         try:
                             bot_id_part = comment.split('_bot_')[1].split('_')[0]
+                            # Try to determine mode from comment
+                            mode = 'hft' if '_HFT' in comment else 'candle'
+                            mode_label = 'HFT' if mode == 'hft' else 'Candle'
+                            
                             bot_info = {
                                 'bot_id': f"bot_{bot_id_part}",
-                                'bot_name': f"Bot {bot_id_part}",
+                                'bot_name': f"{mode_label} Bot",  # Legacy fallback 
                                 'magic_number': magic_number
                             }
                         except:
@@ -2296,9 +2454,13 @@ def get_trade_history():
                     if '_bot_' in comment:
                         try:
                             bot_id_part = comment.split('_bot_')[1].split('_')[0]
+                            # Try to determine mode from comment
+                            mode = 'hft' if '_HFT' in comment else 'candle'
+                            mode_label = 'HFT' if mode == 'hft' else 'Candle'
+                            
                             bot_info = {
                                 'bot_id': f"bot_{bot_id_part}",
-                                'bot_name': f"Bot {bot_id_part}",
+                                'bot_name': f"{mode_label} Bot",  # Legacy fallback 
                                 'magic_number': magic_number
                             }
                         except:
@@ -2368,6 +2530,35 @@ def get_trade_history():
     except Exception as e:
         log.error(f"Error generating trade history: {e}", exc_info=True)
         return jsonify({"error": "Failed to generate trade history"}), 500
+
+# --- Trade History endpoint (frontend compatibility) ---
+@app.route('/trade-history', methods=['GET'])
+def get_trade_history_frontend():
+    """Frontend-compatible trade history endpoint - redirects to main implementation"""
+    return get_trade_history()
+
+@app.route('/force-refresh-trades', methods=['GET'])
+def force_refresh_trade_history():
+    """Force refresh trade history data"""
+    try:
+        # Emit refresh signal to all connected clients
+        socketio.emit('refresh_trade_history', {
+            'reason': 'manual_force_refresh',
+            'timestamp': datetime.now().isoformat()
+        })
+        
+        return jsonify({
+            'success': True,
+            'message': 'Trade history refresh triggered',
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        log.error(f"Error in force refresh trades: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
 # --- SocketIO Event Handlers (Corrected Signatures) ---
 @socketio.on('check_connection')
@@ -2753,9 +2944,13 @@ def get_strategies():
 def handle_bot_start(data):
     """Handle bot start request via WebSocket"""
     try:
-        strategy = data.get('strategy', 'default') if data else 'default'
+        strategy = data.get('strategy', 'rsi_strategy') if data else 'rsi_strategy'  # Default to RSI for HFT
         config = data.get('config', {}) if data else {}
         bot_id = data.get('bot_id') if data else None
+        mode = (data.get('mode') or 'candle').lower() if data else 'candle'  # 'candle' | 'hft'
+        
+        log.info(f"🚀 Starting bot - ID: {bot_id}, Mode: {mode}, Strategy: {strategy}")
+        log.info(f"📋 Bot config: {config}")
         
         if not bot_id:
             raise ValueError("bot_id is required")
@@ -2765,33 +2960,175 @@ def handle_bot_start(data):
             log.warning(f"Bot {bot_id} already exists, stopping existing bot first")
             bot_managers[bot_id].stop_bot()
         
-        # Create new bot manager
-        bot_manager = TradingBotManager()
+        # Create new bot manager based on mode
+        if mode == 'hft':
+            log.info(f"⚡ Creating HFT bot manager for {bot_id}")
+            bot_manager = HFTTradingBotManager()
+            # Set HFT-specific default config with enhanced parameters
+            hft_defaults = {
+                # Core settings
+                'lot_size_per_trade': 0.1,
+                'max_daily_trades': 10,
+                'auto_trading_enabled': True,
+                'strategy_name': strategy,
+                
+                # Risk Management
+                'stop_loss_pips': 20,
+                'take_profit_pips': 40,
+                'risk_reward_ratio': 2.0,
+                'max_loss_threshold': 100,
+                'max_profit_threshold': 200,
+                'use_manual_sl_tp': True,
+                
+                # HFT-specific settings
+                'analysis_interval_secs': 5,
+                'tick_lookback_secs': 30,
+                'min_signal_confidence': 0.6,
+                'max_orders_per_minute': 5,
+                'cooldown_secs_after_trade': 3,
+                'spread_filter_points': 500,
+                'enable_spread_filter': False,
+                
+                # Multi-ticker spread support
+                'symbol_spread_limits': {
+                    'ETHUSD': 500, 'BTCUSD': 1000, 'EURUSD': 5, 
+                    'GBPUSD': 10, 'USDJPY': 10, 'XAUUSD': 50
+                },
+                
+                # Enhanced SL/TP Configuration (frontend configurable)
+                'use_sl_tp': True,                # Backend compatibility
+                'use_manual_sl_tp': True,         # Frontend parameter name
+                'sl_pips': 20,                    # For backward compatibility
+                'tp_pips': 40,                    # For backward compatibility  
+                'sl_tp_mode': 'pips',             # 'pips' or 'percent'
+                
+                # Enhanced indicator settings
+                'indicator_settings': {
+                    # RSI settings
+                    'rsi_period': 14,
+                    'rsi_oversold': 30,
+                    'rsi_overbought': 70,
+                    # Moving Average settings  
+                    'ma_fast_period': 10,
+                    'ma_slow_period': 20,
+                    # MACD settings
+                    'macd_fast': 12,
+                    'macd_slow': 26,
+                    'macd_signal': 9,
+                    # Bollinger Bands
+                    'bb_period': 20,
+                    'bb_deviation': 2,
+                    # Stochastic settings
+                    'stoch_k_period': 14,
+                    'stoch_d_period': 3,
+                    'stoch_oversold': 20,
+                    'stoch_overbought': 80,
+                    # VWAP settings
+                    'vwap_period': 20,
+                    'vwap_deviation_threshold': 0.5,
+                    # Breakout settings
+                    'breakout_lookback': 10,
+                    'breakout_threshold': 0.001
+                },
+                
+                # Protection settings
+                'auto_stop_enabled': True,
+                'max_consecutive_losses': 5,
+                'max_consecutive_profits': 10
+            }
+            # Merge user config with HFT defaults (prioritize user config)
+            merged_config = {**hft_defaults, **config}
+            # Handle nested indicator_settings properly
+            if 'indicator_settings' in config:
+                merged_config['indicator_settings'] = {
+                    **hft_defaults['indicator_settings'], 
+                    **config['indicator_settings']
+                }
+            log.info(f"⚡ HFT config merged: {merged_config}")
+        else:
+            log.info(f"📈 Creating Candle bot manager for {bot_id}")
+            bot_manager = TradingBotManager()
+            # Candle mode defaults
+            candle_defaults = {
+                'lot_size_per_trade': 0.1,
+                'max_daily_trades': 10,
+                'auto_trading_enabled': False,
+                'stop_loss_pips': 50,
+                'take_profit_pips': 100,
+                'risk_reward_ratio': 2.0,
+                'max_loss_threshold': 100,
+                'max_profit_threshold': 200,
+                'use_manual_sl_tp': True,
+                'auto_stop_enabled': True,
+                'max_consecutive_losses': 5,
+                'max_consecutive_profits': 10,
+                'indicator_settings': {
+                    'rsi_period': 14,
+                    'rsi_oversold': 30,
+                    'rsi_overbought': 70,
+                    'ma_fast_period': 10,
+                    'ma_slow_period': 20,
+                    'macd_fast': 12,
+                    'macd_slow': 26,
+                    'macd_signal': 9,
+                    'bb_period': 20,
+                    'bb_deviation': 2,
+                    'stoch_k_period': 14,
+                    'stoch_d_period': 3,
+                    'stoch_oversold': 20,
+                    'stoch_overbought': 80,
+                    'vwap_period': 20,
+                    'vwap_deviation_threshold': 0.5,
+                    'breakout_lookback': 10,
+                    'breakout_threshold': 0.001
+                }
+            }
+            merged_config = {**candle_defaults, **config}
+            if 'indicator_settings' in config:
+                merged_config['indicator_settings'] = {
+                    **candle_defaults['indicator_settings'], 
+                    **config['indicator_settings']
+                }
+            log.info(f"📈 Candle config merged: {merged_config}")
+            
         bot_managers[bot_id] = bot_manager
         
         # Register callback to forward updates to frontend
         def forward_updates(data):
-            socketio.emit('bot_update', data)
+            try:
+                # Add mode information to updates for frontend
+                data['mode'] = getattr(bot_manager, 'mode', mode)
+                socketio.emit('bot_update', data)
+            except Exception as e:
+                log.error(f"Error forwarding bot update: {e}")
         
         bot_manager.register_update_callback(forward_updates)
         
         # Update bot configuration first
-        if config:
-            log.info(f"Updating bot {bot_id} config before start: {config}")
-            bot_manager.update_config(config)
+        if merged_config:
+            log.info(f"🔧 Updating bot {bot_id} config before start: {merged_config}")
+            bot_manager.update_config(merged_config)
         
+        # Start the bot
+        log.info(f"▶️ Starting bot {bot_id} with strategy {strategy}")
         success = bot_manager.start_bot(strategy, bot_id)
+        
+        if success:
+            log.info(f"✅ Bot {bot_id} started successfully in {mode} mode")
+        else:
+            log.error(f"❌ Failed to start bot {bot_id}")
         
         socketio.emit('bot_start_response', {
             'success': success,
             'bot_id': bot_id,
             'strategy': strategy,
             'config': bot_manager.config,
+            'mode': getattr(bot_manager, 'mode', mode),
             'timestamp': datetime.now().isoformat()
         }, room=request.sid)
         
     except Exception as e:
-        log.error(f"Error in bot_start handler: {e}")
+        log.error(f"❌ Error in bot_start handler: {e}", exc_info=True)
         socketio.emit('bot_error', {
             'error': str(e),
             'timestamp': datetime.now().isoformat()
@@ -2834,19 +3171,59 @@ def handle_bot_stop(data):
 def handle_bot_config_update(data):
     """Handle bot configuration update via WebSocket"""
     try:
-        if data:
-            log.info(f"🔧 Updating bot config via WebSocket: {data}")
-            bot_manager.update_config(data)
-            log.info(f"✅ Bot config updated successfully. New config: {bot_manager.config}")
+        bot_id = data.get('bot_id') if data else None
+        config = data if data else {}
+        if bot_id and bot_id in bot_managers:
+            manager = bot_managers[bot_id]
+            log.info(f"🔧 Updating config for {bot_id}: {config}")
+            manager.update_config(config)
+            updated_config = manager.config
+        else:
+            # Backward compatibility: update global default manager
+            log.info(f"🔧 Updating global bot config via WebSocket: {config}")
+            bot_manager.update_config(config)
+            updated_config = bot_manager.config
             
         socketio.emit('bot_config_response', {
             'success': True,
-            'config': bot_manager.config,
+            'config': updated_config,
             'timestamp': datetime.now().isoformat()
         }, room=request.sid)
         
     except Exception as e:
         log.error(f"❌ Error in bot_config_update handler: {e}")
+        socketio.emit('bot_error', {
+            'error': str(e),
+            'timestamp': datetime.now().isoformat()
+        }, room=request.sid)
+
+@socketio.on('bot_diagnostic_mode')
+def handle_bot_diagnostic_mode(data):
+    """Enable/disable diagnostic mode for testing"""
+    try:
+        bot_id = data.get('bot_id') if data else None
+        enable = data.get('enable', True) if data else True
+        
+        if bot_id and bot_id in bot_managers:
+            manager = bot_managers[bot_id]
+            if hasattr(manager, 'enable_diagnostic_mode'):
+                result = manager.enable_diagnostic_mode(enable)
+                log.info(f"🧪 Diagnostic mode {'enabled' if enable else 'disabled'} for bot {bot_id}")
+                
+                socketio.emit('bot_diagnostic_response', {
+                    'success': True,
+                    'bot_id': bot_id,
+                    'diagnostic_mode': result,
+                    'message': f"Diagnostic mode {'enabled' if enable else 'disabled'}",
+                    'timestamp': datetime.now().isoformat()
+                }, room=request.sid)
+            else:
+                raise ValueError(f"Bot {bot_id} does not support diagnostic mode")
+        else:
+            raise ValueError(f"Bot {bot_id} not found")
+            
+    except Exception as e:
+        log.error(f"❌ Error in bot_diagnostic_mode handler: {e}")
         socketio.emit('bot_error', {
             'error': str(e),
             'timestamp': datetime.now().isoformat()
@@ -2887,12 +3264,12 @@ def handle_get_active_bots():
     try:
         active_bots = []
         
-        for bot_id, bot_manager in bot_managers.items():
-            if bot_manager.is_running:
-                bot_status = bot_manager.get_bot_status()
+        for bot_id, manager in bot_managers.items():
+            if manager.is_running:
+                bot_status = manager.get_bot_status()
                 
                 # Get trade history for better performance data
-                trade_history = bot_manager.get_trade_history()
+                trade_history = manager.get_trade_history() if hasattr(manager, 'get_trade_history') else []
                 
                 active_bots.append({
                     'bot_id': bot_id,
@@ -2902,6 +3279,7 @@ def handle_get_active_bots():
                     'is_running': bot_status['is_running'],
                     'auto_trading': bot_status['auto_trading'],
                     'active_trades': bot_status['active_trades'],
+                    'mode': bot_status.get('mode', 'candle'),
                     'trade_history': trade_history[:10],  # Last 10 trades
                     'created_at': datetime.now().isoformat(),  # Fallback timestamp
                     'last_activity': datetime.now().isoformat()
@@ -2937,8 +3315,12 @@ def handle_force_performance_update(data):
         if bot_id not in bot_managers:
             raise ValueError(f"Bot {bot_id} not found")
         
-        bot_manager = bot_managers[bot_id]
-        performance = bot_manager.force_performance_update()
+        manager = bot_managers[bot_id]
+        if hasattr(manager, 'force_performance_update'):
+            performance = manager.force_performance_update()
+        else:
+            manager._update_performance()  # noqa - internal call for HFT manager
+            performance = manager.performance
         
         # Send fresh performance data
         socketio.emit('bot_update', {

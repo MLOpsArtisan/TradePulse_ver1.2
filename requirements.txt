@@ -1,0 +1,14 @@
+Flask==2.3.3
+Flask-SocketIO==5.3.6
+MetaTrader5==5.0.45
+numpy==1.24.3
+pandas==2.0.3
+python-socketio==5.8.0
+eventlet==0.33.3
+requests==2.31.0
+python-dotenv==1.0.0
+ta-lib==0.4.28
+matplotlib==3.7.2
+plotly==5.15.0
+yfinance==0.2.18
+websocket-client==1.6.1

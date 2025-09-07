@@ -8,61 +8,153 @@ const TradingBot = ({ socket }) => {
   const [botIdCounter, setBotIdCounter] = useState(1);
   const [selectedBotDetail, setSelectedBotDetail] = useState(null);
   
-  // Strategy and configuration state
-  const [strategies] = useState([
+  // Mode and strategy catalogs
+  const [mode, setMode] = useState('candle'); // 'candle' | 'hft'
+  const candleStrategies = [
     'moving_average',
     'rsi_strategy', 
     'breakout_strategy',
     'combined_strategy',
     'bollinger_bands',
-    'macd_strategy',        // New MACD strategy
-    'stochastic_strategy',  // New Stochastic strategy
-    'vwap_strategy',        // New VWAP strategy
+    'macd_strategy',
+    'stochastic_strategy',
+    'vwap_strategy',
     'test_strategy',
     'always_signal'
-  ]);
+  ];
+  const hftStrategies = [
+    'rsi_strategy',
+    'macd_strategy', 
+    'moving_average',
+    'breakout',
+    'stochastic',
+    'vwap',
+    'bollinger_bands',
+    'always_signal'
+  ];
+  const strategies = mode === 'hft' ? hftStrategies : candleStrategies;
   const [selectedStrategy, setSelectedStrategy] = useState('default');
   const [loading, setLoading] = useState(false);
   const [botUpdates, setBotUpdates] = useState([]);
   
-  // Advanced configuration state
+  // Streamlined configuration state
   const [config, setConfig] = useState({
-    max_risk_per_trade: 0.02,
+    // Core settings
+    lot_size_per_trade: 0.1,          // Lot size per trade (0.01 - 1.0)
     max_daily_trades: 10,
     auto_trading_enabled: false,
+    
+    // Risk Management (for both modes)
     stop_loss_pips: 50,
     take_profit_pips: 100,
-    // Advanced configuration fields
-    risk_reward_ratio: 2.0,
-    entry_trigger: 'signal_confirmation',
-    exit_trigger: 'stop_loss_take_profit',
-    leverage: 1,
-    trade_size: 1000,
-    strategy_parameters: {
-      period: 14,
-      threshold: 0.02
-    },
-    time_window: '24h',
-    asset_type: 'spot',
+    risk_reward_ratio: 2.0,           // TP/SL ratio (auto-calculated when manual SL/TP set)
+    max_loss_threshold: 100,          // Maximum daily loss ($)
+    max_profit_threshold: 200,        // Maximum daily profit ($)
+    use_manual_sl_tp: true,           // Use manual SL/TP vs risk-reward ratio
+    
+    // HFT-specific settings
+    analysis_interval_secs: 5,
+    tick_lookback_secs: 30,
+    min_signal_confidence: 0.6,
+    max_orders_per_minute: 5,
+    cooldown_secs_after_trade: 3,
+    
+    // Enhanced indicator settings (for both modes)
     indicator_settings: {
+      // RSI settings
       rsi_period: 14,
-      ma_period: 20,
+      rsi_oversold: 30,
+      rsi_overbought: 70,
+      
+      // Moving Average settings  
+      ma_fast_period: 10,
+      ma_slow_period: 20,
+      
+      // MACD settings
+      macd_fast: 12,
+      macd_slow: 26,
+      macd_signal: 9,
+      
+      // Bollinger Bands
       bb_period: 20,
-      bb_deviation: 2
+      bb_deviation: 2,
+      
+      // Stochastic settings
+      stoch_k_period: 14,
+      stoch_d_period: 3,
+      stoch_oversold: 20,
+      stoch_overbought: 80,
+      
+      // VWAP settings
+      vwap_period: 20,
+      vwap_deviation_threshold: 0.5,
+      
+      // Breakout settings
+      breakout_lookback: 10,
+      breakout_threshold: 0.001
     },
-    max_loss_threshold: 100,
+    
+    // Protection settings
     auto_stop_enabled: true,
-    max_consecutive_losses: 10
+    max_consecutive_losses: 5,
+    max_consecutive_profits: 10       // Auto-pause after consecutive profits
   });
   
   const [originalConfig, setOriginalConfig] = useState(config);
   const [configModified, setConfigModified] = useState(false);
+  const [modeTransitionKey, setModeTransitionKey] = useState(0);
 
   // Check if config has been modified
   useEffect(() => {
     const isModified = JSON.stringify(config) !== JSON.stringify(originalConfig);
     setConfigModified(isModified);
   }, [config, originalConfig]);
+
+  // Auto-calculate risk-reward ratio when using manual SL/TP
+  useEffect(() => {
+    if (config.use_manual_sl_tp && config.stop_loss_pips > 0) {
+      const calculatedRatio = config.take_profit_pips / config.stop_loss_pips;
+      setConfig(prev => ({
+        ...prev,
+        risk_reward_ratio: Math.round(calculatedRatio * 10) / 10  // Round to 1 decimal
+      }));
+    }
+  }, [config.stop_loss_pips, config.take_profit_pips, config.use_manual_sl_tp]);
+
+  // Smooth mode switching with optimized defaults
+  useEffect(() => {
+    setModeTransitionKey(k => k + 1);
+    if (mode === 'hft') {
+      setSelectedStrategy('rsi_strategy');
+      setConfig(prev => ({
+        ...prev,
+        lot_size_per_trade: 0.1,
+        stop_loss_pips: 20,
+        take_profit_pips: 40,
+        max_loss_threshold: 100,
+        max_profit_threshold: 200,
+        analysis_interval_secs: 5,
+        tick_lookback_secs: 30,
+        min_signal_confidence: 0.6,
+        max_orders_per_minute: 5,
+        cooldown_secs_after_trade: 3,
+        max_consecutive_losses: 5,
+        max_consecutive_profits: 10,
+      }));
+    } else {
+      setSelectedStrategy('moving_average');
+      setConfig(prev => ({
+        ...prev,
+        lot_size_per_trade: 0.1,
+        stop_loss_pips: 50,
+        take_profit_pips: 100,
+        max_loss_threshold: 100,
+        max_profit_threshold: 200,
+        max_consecutive_losses: 5,
+        max_consecutive_profits: 10,
+      }));
+    }
+  }, [mode]);
 
   // Socket event listeners
   useEffect(() => {
@@ -77,17 +169,19 @@ const TradingBot = ({ socket }) => {
       if (data.success && data.bots && data.bots.length > 0) {
         const restoredBots = data.bots.map((botData, index) => {
           // Extract bot number from bot_id (e.g., "bot_1" -> 1)
-          const botNumberMatch = botData.bot_id.match(/bot_(\d+)/);
-          const botNumber = botNumberMatch ? parseInt(botNumberMatch[1]) : index + 1;
+          // botNumber removed from label; keep mapping simple
+          // Legacy parse removed; label no longer includes the number
           
           // Map performance data with proper fallbacks
           const performance = botData.performance || {};
           
+          const mode = botData.mode || 'candle';
           return {
             id: botData.bot_id,
-            label: `Bot ${botNumber}`,
+            label: `${mode === 'hft' ? 'HFT' : 'Candle'} (${(botData.strategy || '').toUpperCase()})`,
             strategy: botData.strategy,
             status: botData.is_running ? 'running' : 'stopped',
+            mode,
             config: botData.config || config,
             performance: {
               total_trades: performance.total_trades || 0,
@@ -329,9 +423,10 @@ const TradingBot = ({ socket }) => {
   const createBot = () => {
     const newBot = {
       id: `bot_${botIdCounter}`,
-      label: `Bot ${botIdCounter}`,
+      label: `${mode === 'hft' ? 'HFT' : 'Candle'} (${selectedStrategy.toUpperCase()})`,
       strategy: selectedStrategy,
       status: 'running', // running, stopped, auto_stopped
+      mode,
       config: { ...config },
       performance: {
         total_trades: 0,
@@ -356,6 +451,7 @@ const TradingBot = ({ socket }) => {
       socket.emit('bot_start', { 
         bot_id: newBot.id,
         strategy: selectedStrategy,
+        mode,
         config: config 
       });
     }
@@ -548,9 +644,19 @@ const TradingBot = ({ socket }) => {
       </div>
 
       <div className="bot-sections">
-        {/* Strategy Selection */}
+        {/* Strategy Selection with fancy mode switch */}
         <div className="strategy-selection">
-          <h3>Bot Strategy Selection</h3>
+          <div className="mode-header">
+            <h3>{mode === 'hft' ? 'HFT Mode' : 'Candle Mode'}</h3>
+            <div className={`mode-switch ${mode}`} onClick={() => setMode(mode === 'hft' ? 'candle' : 'hft')}>
+              <div className="mode-switch-track">
+                <div className="mode-switch-thumb" />
+                <span className="mode-label left">Candle</span>
+                <span className="mode-label right">HFT</span>
+              </div>
+            </div>
+          </div>
+          <div className="mode-subtitle">{mode === 'hft' ? 'Tick-based strategies with per-second analysis' : 'Candle-based strategies (per-minute analysis)'}</div>
           <div className="strategy-dropdown-container">
             <label>Select Strategy:</label>
             <select 
@@ -571,258 +677,53 @@ const TradingBot = ({ socket }) => {
               {selectedStrategy === 'breakout_strategy' && '🚀 Breakout Strategy - Trade when price breaks support/resistance'}
               {selectedStrategy === 'combined_strategy' && '🎯 Combined Strategy - Uses multiple indicators (requires 2+ agreements)'}
               {selectedStrategy === 'bollinger_bands' && '📉 Bollinger Bands - Buy at lower band, sell at upper band'}
-              {selectedStrategy === 'macd_strategy' && '⚡ MACD Strategy - Trade on MACD line crossing signal line (12/26/9)'}
+              {selectedStrategy === 'macd_strategy' && '⚡ MACD Strategy - Tick momentum crossover in HFT, classic in Candle'}
               {selectedStrategy === 'frequent_macd' && '🔄 Frequent MACD - Faster MACD signals with shorter periods (5/10/3)'}
               {selectedStrategy === 'stochastic_strategy' && '🌊 Stochastic Oscillator - Momentum-based overbought/oversold signals'}
               {selectedStrategy === 'vwap_strategy' && '💰 VWAP Strategy - Trade when price deviates significantly from volume-weighted average'}
               {selectedStrategy === 'test_strategy' && '🧪 Test Strategy - Generates alternating signals every 30 seconds for testing'}
               {selectedStrategy === 'always_signal' && '⚡ Always Signal - GUARANTEED to generate signals every second for testing'}
+              {mode === 'hft' && ' | HFT mode uses tick-optimized calculations for the same strategy name.'}
             </div>
           </div>
         </div>
 
-        {/* Advanced Configuration */}
-        <div className="bot-config advanced-config">
+        {/* Advanced Configuration with transition */}
+        <div key={modeTransitionKey} className={`bot-config advanced-config mode-view ${mode}`}>
           <h3>Advanced Configuration</h3>
           
-          {/* Basic Trading Parameters */}
+          {/* Core Trading Settings */}
           <div className="config-section">
-            <h4>Basic Trading Parameters</h4>
+            <h4>Core Trading Settings</h4>
             <div className="config-grid">
               <div className="config-item">
-                <label>Max Risk per Trade:</label>
+                <label>Lot Size per Trade:</label>
                 <input
                   type="number"
                   step="0.01"
-                  min="0"
-                  max="1"
-                  value={config.max_risk_per_trade}
-                  onChange={(e) => handleConfigChange('max_risk_per_trade', parseFloat(e.target.value))}
+                  min="0.01"
+                  max="1.0"
+                  value={config.lot_size_per_trade}
+                  onChange={(e) => handleConfigChange('lot_size_per_trade', parseFloat(e.target.value))}
                   className="config-input"
                 />
-              </div>
-              <div className="config-item">
-                <label>Trade Size (USD):</label>
-                <input
-                  type="number"
-                  min="100"
-                  value={config.trade_size}
-                  onChange={(e) => handleConfigChange('trade_size', parseInt(e.target.value))}
-                  className="config-input"
-                />
-              </div>
-              <div className="config-item">
-                <label>Leverage:</label>
-                <select
-                  value={config.leverage}
-                  onChange={(e) => handleConfigChange('leverage', parseInt(e.target.value))}
-                  className="config-input"
-                >
-                  <option value={1}>1x</option>
-                  <option value={2}>2x</option>
-                  <option value={5}>5x</option>
-                  <option value={10}>10x</option>
-                  <option value={20}>20x</option>
-                </select>
-              </div>
-              <div className="config-item">
-                <label>Asset Type:</label>
-                <select
-                  value={config.asset_type}
-                  onChange={(e) => handleConfigChange('asset_type', e.target.value)}
-                  className="config-input"
-                >
-                  <option value="spot">Spot</option>
-                  <option value="futures">Futures</option>
-                  <option value="options">Options</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
-          {/* Risk Management */}
-          <div className="config-section">
-            <h4>Risk Management</h4>
-            <div className="config-grid">
-              <div className="config-item">
-                <label>Risk-Reward Ratio:</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  min="0.5"
-                  max="10"
-                  value={config.risk_reward_ratio}
-                  onChange={(e) => handleConfigChange('risk_reward_ratio', parseFloat(e.target.value))}
-                  className="config-input"
-                />
-              </div>
-              <div className="config-item">
-                <label>Stop Loss (pips):</label>
-                <input
-                  type="number"
-                  min="1"
-                  value={config.stop_loss_pips}
-                  onChange={(e) => handleConfigChange('stop_loss_pips', parseInt(e.target.value))}
-                  className="config-input"
-                />
-              </div>
-              <div className="config-item">
-                <label>Take Profit (pips):</label>
-                <input
-                  type="number"
-                  min="1"
-                  value={config.take_profit_pips}
-                  onChange={(e) => handleConfigChange('take_profit_pips', parseInt(e.target.value))}
-                  className="config-input"
-                />
-              </div>
-              <div className="config-item">
-                <label>Max Loss Threshold ($):</label>
-                <input
-                  type="number"
-                  min="50"
-                  value={config.max_loss_threshold}
-                  onChange={(e) => handleConfigChange('max_loss_threshold', parseInt(e.target.value))}
-                  className="config-input"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Trading Rules */}
-          <div className="config-section">
-            <h4>Trading Rules</h4>
-            <div className="config-grid">
-              <div className="config-item">
-                <label>Entry Trigger:</label>
-                <select
-                  value={config.entry_trigger}
-                  onChange={(e) => handleConfigChange('entry_trigger', e.target.value)}
-                  className="config-input"
-                >
-                  <option value="signal_confirmation">Signal Confirmation</option>
-                  <option value="breakout">Breakout</option>
-                  <option value="pullback">Pullback</option>
-                  <option value="reversal">Reversal</option>
-                </select>
-              </div>
-              <div className="config-item">
-                <label>Exit Trigger:</label>
-                <select
-                  value={config.exit_trigger}
-                  onChange={(e) => handleConfigChange('exit_trigger', e.target.value)}
-                  className="config-input"
-                >
-                  <option value="stop_loss_take_profit">Stop Loss / Take Profit</option>
-                  <option value="trailing_stop">Trailing Stop</option>
-                  <option value="time_based">Time Based</option>
-                  <option value="signal_reversal">Signal Reversal</option>
-                </select>
+                <small style={{color: '#9ca3af', fontSize: '0.8rem', marginTop: '4px', display: 'block'}}>
+                  📊 Trading volume per order (0.01 = minimum, 1.0 = standard lot)
+                </small>
               </div>
               <div className="config-item">
                 <label>Max Daily Trades:</label>
                 <input
                   type="number"
                   min="1"
+                  max="100"
                   value={config.max_daily_trades}
                   onChange={(e) => handleConfigChange('max_daily_trades', parseInt(e.target.value))}
                   className="config-input"
                 />
-              </div>
-              <div className="config-item">
-                <label>Time Window:</label>
-                <select
-                  value={config.time_window}
-                  onChange={(e) => handleConfigChange('time_window', e.target.value)}
-                  className="config-input"
-                >
-                  <option value="1h">1 Hour</option>
-                  <option value="4h">4 Hours</option>
-                  <option value="8h">8 Hours</option>
-                  <option value="24h">24 Hours</option>
-                  <option value="always">Always On</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
-          {/* Indicator Settings */}
-          <div className="config-section">
-            <h4>Indicator Settings</h4>
-            <div className="config-grid">
-              <div className="config-item">
-                <label>RSI Period:</label>
-                <input
-                  type="number"
-                  min="5"
-                  max="50"
-                  value={config.indicator_settings.rsi_period}
-                  onChange={(e) => handleConfigChange('indicator_settings.rsi_period', parseInt(e.target.value))}
-                  className="config-input"
-                />
-              </div>
-              <div className="config-item">
-                <label>Moving Average Period:</label>
-                <input
-                  type="number"
-                  min="5"
-                  max="200"
-                  value={config.indicator_settings.ma_period}
-                  onChange={(e) => handleConfigChange('indicator_settings.ma_period', parseInt(e.target.value))}
-                  className="config-input"
-                />
-              </div>
-              <div className="config-item">
-                <label>Bollinger Bands Period:</label>
-                <input
-                  type="number"
-                  min="5"
-                  max="50"
-                  value={config.indicator_settings.bb_period}
-                  onChange={(e) => handleConfigChange('indicator_settings.bb_period', parseInt(e.target.value))}
-                  className="config-input"
-                />
-              </div>
-              <div className="config-item">
-                <label>BB Deviation:</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  min="1"
-                  max="3"
-                  value={config.indicator_settings.bb_deviation}
-                  onChange={(e) => handleConfigChange('indicator_settings.bb_deviation', parseFloat(e.target.value))}
-                  className="config-input"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Auto-Stop Settings */}
-          <div className="config-section">
-            <h4>Auto-Stop Settings</h4>
-            <div className="config-grid">
-              <div className="config-item checkbox-item">
-                <label className="checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={config.auto_stop_enabled}
-                    onChange={(e) => handleConfigChange('auto_stop_enabled', e.target.checked)}
-                    className="config-checkbox"
-                  />
-                  <span>Enable Auto-Stop</span>
-                </label>
-              </div>
-              <div className="config-item">
-                <label>Max Consecutive Losses:</label>
-                <input
-                  type="number"
-                  min="3"
-                  max="20"
-                  value={config.max_consecutive_losses}
-                  onChange={(e) => handleConfigChange('max_consecutive_losses', parseInt(e.target.value))}
-                  className="config-input"
-                />
+                <small style={{color: '#9ca3af', fontSize: '0.8rem', marginTop: '4px', display: 'block'}}>
+                  🔢 Maximum number of trades per day (risk management)
+                </small>
               </div>
               <div className="config-item checkbox-item">
                 <label className="checkbox-label">
@@ -834,18 +735,465 @@ const TradingBot = ({ socket }) => {
                   />
                   <span>Enable Auto Trading</span>
                 </label>
-                <div className="config-warning">
-                  {!config.auto_trading_enabled && (
-                    <small style={{color: '#ff6b6b', fontSize: '12px'}}>
-                      ⚠️ Auto trading is disabled - signals will be generated but no orders will be placed
-                    </small>
-                  )}
-                  {config.auto_trading_enabled && (
-                    <small style={{color: '#52c41a', fontSize: '12px'}}>
-                      ✅ Auto trading is enabled - orders will be placed automatically
-                    </small>
-                  )}
+                <small style={{color: '#9ca3af', fontSize: '0.8rem', marginTop: '4px', display: 'block'}}>
+                  ⚡ Execute trades automatically when signals are generated
+                </small>
+              </div>
+              <div className="config-item checkbox-item">
+                <label className="checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={config.auto_stop_enabled}
+                    onChange={(e) => handleConfigChange('auto_stop_enabled', e.target.checked)}
+                    className="config-checkbox"
+                  />
+                  <span>Enable Auto-Stop Protection</span>
+                </label>
+                <small style={{color: '#9ca3af', fontSize: '0.8rem', marginTop: '4px', display: 'block'}}>
+                  🛡️ Automatically stop trading when protection limits are reached
+                </small>
+              </div>
+            </div>
+          </div>
+
+          {/* HFT Settings (only visible in HFT mode) */}
+          {mode === 'hft' && (
+            <div className="config-section">
+              <h4>HFT Settings</h4>
+              <div className="config-grid">
+                <div className="config-item">
+                  <label>Analysis Interval (sec)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={config.analysis_interval_secs}
+                    onChange={(e) => handleConfigChange('analysis_interval_secs', parseInt(e.target.value))}
+                    className="config-input"
+                  />
                 </div>
+                <div className="config-item">
+                  <label>Tick Lookback (sec)</label>
+                  <input
+                    type="number"
+                    min="5"
+                    value={config.tick_lookback_secs}
+                    onChange={(e) => handleConfigChange('tick_lookback_secs', parseInt(e.target.value))}
+                    className="config-input"
+                  />
+                </div>
+                <div className="config-item">
+                  <label>Min Signal Confidence</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0.5"
+                    max="1"
+                    value={config.min_signal_confidence}
+                    onChange={(e) => handleConfigChange('min_signal_confidence', parseFloat(e.target.value))}
+                    className="config-input"
+                  />
+                </div>
+                <div className="config-item">
+                  <label>Max Orders / Minute</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={config.max_orders_per_minute}
+                    onChange={(e) => handleConfigChange('max_orders_per_minute', parseInt(e.target.value))}
+                    className="config-input"
+                  />
+                </div>
+                <div className="config-item">
+                  <label>Cooldown After Trade (sec)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={config.cooldown_secs_after_trade}
+                    onChange={(e) => handleConfigChange('cooldown_secs_after_trade', parseInt(e.target.value))}
+                    className="config-input"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Risk Management */}
+          <div className="config-section">
+            <h4>Risk Management</h4>
+            <div className="config-grid">
+              <div className="config-item">
+                <label>Stop Loss (pips):</label>
+                <input
+                  type="number"
+                  min="5"
+                  max="200"
+                  value={config.stop_loss_pips}
+                  onChange={(e) => handleConfigChange('stop_loss_pips', parseInt(e.target.value))}
+                  className="config-input"
+                />
+                <small style={{color: '#9ca3af', fontSize: '0.8rem', marginTop: '4px', display: 'block'}}>
+                  🛑 Maximum loss per trade in pips
+                </small>
+              </div>
+              <div className="config-item">
+                <label>Take Profit (pips):</label>
+                <input
+                  type="number"
+                  min="5"
+                  max="500"
+                  value={config.take_profit_pips}
+                  onChange={(e) => handleConfigChange('take_profit_pips', parseInt(e.target.value))}
+                  className="config-input"
+                />
+                <small style={{color: '#9ca3af', fontSize: '0.8rem', marginTop: '4px', display: 'block'}}>
+                  ✅ Target profit per trade in pips
+                </small>
+              </div>
+              <div className="config-item">
+                <label>Risk-Reward Ratio:</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  min="0.5"
+                  max="10"
+                  value={config.risk_reward_ratio}
+                  onChange={(e) => handleConfigChange('risk_reward_ratio', parseFloat(e.target.value))}
+                  className="config-input"
+                  disabled={config.use_manual_sl_tp}
+                />
+                <small style={{color: '#9ca3af', fontSize: '0.8rem', marginTop: '4px', display: 'block'}}>
+                  ⚖️ {config.use_manual_sl_tp ? 'Auto-calculated from SL/TP above' : 'TP/SL ratio (2.0 = 2x reward vs risk)'}
+                </small>
+              </div>
+              <div className="config-item checkbox-item">
+                <label className="checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={config.use_manual_sl_tp}
+                    onChange={(e) => handleConfigChange('use_manual_sl_tp', e.target.checked)}
+                    className="config-checkbox"
+                  />
+                  <span>Use Manual SL/TP</span>
+                </label>
+                <small style={{color: '#9ca3af', fontSize: '0.8rem', marginTop: '4px', display: 'block'}}>
+                  📋 {config.use_manual_sl_tp ? 'Using manual SL/TP values above' : 'Using risk-reward ratio calculation'}
+                </small>
+              </div>
+              <div className="config-item">
+                <label>Max Loss Threshold ($):</label>
+                <input
+                  type="number"
+                  min="50"
+                  max="10000"
+                  value={config.max_loss_threshold}
+                  onChange={(e) => handleConfigChange('max_loss_threshold', parseInt(e.target.value))}
+                  className="config-input"
+                />
+                <small style={{color: '#9ca3af', fontSize: '0.8rem', marginTop: '4px', display: 'block'}}>
+                  📉 Stop trading when daily loss reaches this amount
+                </small>
+              </div>
+              <div className="config-item">
+                <label>Max Profit Threshold ($):</label>
+                <input
+                  type="number"
+                  min="100"
+                  max="50000"
+                  value={config.max_profit_threshold}
+                  onChange={(e) => handleConfigChange('max_profit_threshold', parseInt(e.target.value))}
+                  className="config-input"
+                />
+                <small style={{color: '#9ca3af', fontSize: '0.8rem', marginTop: '4px', display: 'block'}}>
+                  📈 Pause trading when daily profit reaches this target
+                </small>
+              </div>
+            </div>
+          </div>
+
+
+
+          {/* Enhanced Indicator Settings */}
+          <div className="config-section">
+            <h4>Strategy Parameters</h4>
+            <div className="indicator-tabs">
+              
+              {/* RSI Settings */}
+              <div className="indicator-group">
+                <h5>RSI Strategy</h5>
+                <div className="config-grid-compact">
+                  <div className="config-item">
+                    <label>RSI Period:</label>
+                    <input
+                      type="number"
+                      min="5"
+                      max="30"
+                      value={config.indicator_settings.rsi_period}
+                      onChange={(e) => handleConfigChange('indicator_settings.rsi_period', parseInt(e.target.value))}
+                      className="config-input"
+                    />
+                  </div>
+                  <div className="config-item">
+                    <label>Oversold Level:</label>
+                    <input
+                      type="number"
+                      min="10"
+                      max="40"
+                      value={config.indicator_settings.rsi_oversold}
+                      onChange={(e) => handleConfigChange('indicator_settings.rsi_oversold', parseInt(e.target.value))}
+                      className="config-input"
+                    />
+                  </div>
+                  <div className="config-item">
+                    <label>Overbought Level:</label>
+                    <input
+                      type="number"
+                      min="60"
+                      max="90"
+                      value={config.indicator_settings.rsi_overbought}
+                      onChange={(e) => handleConfigChange('indicator_settings.rsi_overbought', parseInt(e.target.value))}
+                      className="config-input"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Moving Average Settings */}
+              <div className="indicator-group">
+                <h5>Moving Average Strategy</h5>
+                <div className="config-grid-compact">
+                  <div className="config-item">
+                    <label>Fast MA Period:</label>
+                    <input
+                      type="number"
+                      min="5"
+                      max="50"
+                      value={config.indicator_settings.ma_fast_period}
+                      onChange={(e) => handleConfigChange('indicator_settings.ma_fast_period', parseInt(e.target.value))}
+                      className="config-input"
+                    />
+                  </div>
+                  <div className="config-item">
+                    <label>Slow MA Period:</label>
+                    <input
+                      type="number"
+                      min="10"
+                      max="100"
+                      value={config.indicator_settings.ma_slow_period}
+                      onChange={(e) => handleConfigChange('indicator_settings.ma_slow_period', parseInt(e.target.value))}
+                      className="config-input"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* MACD Settings */}
+              <div className="indicator-group">
+                <h5>MACD Strategy</h5>
+                <div className="config-grid-compact">
+                  <div className="config-item">
+                    <label>Fast EMA:</label>
+                    <input
+                      type="number"
+                      min="8"
+                      max="20"
+                      value={config.indicator_settings.macd_fast}
+                      onChange={(e) => handleConfigChange('indicator_settings.macd_fast', parseInt(e.target.value))}
+                      className="config-input"
+                    />
+                  </div>
+                  <div className="config-item">
+                    <label>Slow EMA:</label>
+                    <input
+                      type="number"
+                      min="20"
+                      max="40"
+                      value={config.indicator_settings.macd_slow}
+                      onChange={(e) => handleConfigChange('indicator_settings.macd_slow', parseInt(e.target.value))}
+                      className="config-input"
+                    />
+                  </div>
+                  <div className="config-item">
+                    <label>Signal Line:</label>
+                    <input
+                      type="number"
+                      min="5"
+                      max="15"
+                      value={config.indicator_settings.macd_signal}
+                      onChange={(e) => handleConfigChange('indicator_settings.macd_signal', parseInt(e.target.value))}
+                      className="config-input"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Stochastic Settings */}
+              <div className="indicator-group">
+                <h5>Stochastic Strategy</h5>
+                <div className="config-grid-compact">
+                  <div className="config-item">
+                    <label>%K Period:</label>
+                    <input
+                      type="number"
+                      min="5"
+                      max="25"
+                      value={config.indicator_settings.stoch_k_period}
+                      onChange={(e) => handleConfigChange('indicator_settings.stoch_k_period', parseInt(e.target.value))}
+                      className="config-input"
+                    />
+                  </div>
+                  <div className="config-item">
+                    <label>%D Period:</label>
+                    <input
+                      type="number"
+                      min="2"
+                      max="10"
+                      value={config.indicator_settings.stoch_d_period}
+                      onChange={(e) => handleConfigChange('indicator_settings.stoch_d_period', parseInt(e.target.value))}
+                      className="config-input"
+                    />
+                  </div>
+                  <div className="config-item">
+                    <label>Oversold:</label>
+                    <input
+                      type="number"
+                      min="10"
+                      max="30"
+                      value={config.indicator_settings.stoch_oversold}
+                      onChange={(e) => handleConfigChange('indicator_settings.stoch_oversold', parseInt(e.target.value))}
+                      className="config-input"
+                    />
+                  </div>
+                  <div className="config-item">
+                    <label>Overbought:</label>
+                    <input
+                      type="number"
+                      min="70"
+                      max="90"
+                      value={config.indicator_settings.stoch_overbought}
+                      onChange={(e) => handleConfigChange('indicator_settings.stoch_overbought', parseInt(e.target.value))}
+                      className="config-input"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* VWAP & Breakout Settings */}
+              <div className="indicator-group">
+                <h5>VWAP & Breakout Settings</h5>
+                <div className="config-grid-compact">
+                  <div className="config-item">
+                    <label>VWAP Period:</label>
+                    <input
+                      type="number"
+                      min="10"
+                      max="50"
+                      value={config.indicator_settings.vwap_period}
+                      onChange={(e) => handleConfigChange('indicator_settings.vwap_period', parseInt(e.target.value))}
+                      className="config-input"
+                    />
+                  </div>
+                  <div className="config-item">
+                    <label>VWAP Deviation %:</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0.1"
+                      max="2.0"
+                      value={config.indicator_settings.vwap_deviation_threshold}
+                      onChange={(e) => handleConfigChange('indicator_settings.vwap_deviation_threshold', parseFloat(e.target.value))}
+                      className="config-input"
+                    />
+                  </div>
+                  <div className="config-item">
+                    <label>Breakout Lookback:</label>
+                    <input
+                      type="number"
+                      min="5"
+                      max="25"
+                      value={config.indicator_settings.breakout_lookback}
+                      onChange={(e) => handleConfigChange('indicator_settings.breakout_lookback', parseInt(e.target.value))}
+                      className="config-input"
+                    />
+                  </div>
+                  <div className="config-item">
+                    <label>Breakout Threshold %:</label>
+                    <input
+                      type="number"
+                      step="0.001"
+                      min="0.001"
+                      max="0.01"
+                      value={config.indicator_settings.breakout_threshold}
+                      onChange={(e) => handleConfigChange('indicator_settings.breakout_threshold', parseFloat(e.target.value))}
+                      className="config-input"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Bollinger Bands */}
+              <div className="indicator-group">
+                <h5>Bollinger Bands</h5>
+                <div className="config-grid-compact">
+                  <div className="config-item">
+                    <label>BB Period:</label>
+                    <input
+                      type="number"
+                      min="10"
+                      max="30"
+                      value={config.indicator_settings.bb_period}
+                      onChange={(e) => handleConfigChange('indicator_settings.bb_period', parseInt(e.target.value))}
+                      className="config-input"
+                    />
+                  </div>
+                  <div className="config-item">
+                    <label>BB Deviation:</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="1.5"
+                      max="3.0"
+                      value={config.indicator_settings.bb_deviation}
+                      onChange={(e) => handleConfigChange('indicator_settings.bb_deviation', parseFloat(e.target.value))}
+                      className="config-input"
+                    />
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          {/* Protection Settings */}
+          <div className="config-section">
+            <h4>Protection Settings</h4>
+            <div className="config-grid">
+              <div className="config-item">
+                <label>Max Consecutive Losses:</label>
+                <input
+                  type="number"
+                  min="3"
+                  max="15"
+                  value={config.max_consecutive_losses}
+                  onChange={(e) => handleConfigChange('max_consecutive_losses', parseInt(e.target.value))}
+                  className="config-input"
+                />
+                <small style={{color: '#9ca3af', fontSize: '0.8rem', marginTop: '4px', display: 'block'}}>
+                  🔴 Stop bot after this many consecutive losing trades
+                </small>
+              </div>
+              <div className="config-item">
+                <label>Max Consecutive Profits:</label>
+                <input
+                  type="number"
+                  min="5"
+                  max="50"
+                  value={config.max_consecutive_profits}
+                  onChange={(e) => handleConfigChange('max_consecutive_profits', parseInt(e.target.value))}
+                  className="config-input"
+                />
+                <small style={{color: '#9ca3af', fontSize: '0.8rem', marginTop: '4px', display: 'block'}}>
+                  🟢 Pause bot after this many consecutive winning trades (prevent overconfidence)
+                </small>
               </div>
             </div>
           </div>
@@ -900,9 +1248,14 @@ const TradingBot = ({ socket }) => {
                           Price: ${update.current_price.toFixed(4)}
                         </span>
                       )}
+                      {update.mode && (
+                        <span className="status-badge">
+                          {update.mode === 'hft' ? 'HFT' : 'CANDLE'}
+                        </span>
+                      )}
                       {update.next_analysis_in && (
                         <span className="timer-badge">
-                          Next analysis in: {update.next_analysis_in}s
+                          {update.mode === 'hft' ? 'Interval' : 'Next analysis in'}: {update.next_analysis_in}s
                         </span>
                       )}
                       {update.ticket && (
