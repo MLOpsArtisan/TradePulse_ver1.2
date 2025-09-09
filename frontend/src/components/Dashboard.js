@@ -4,6 +4,7 @@ import TradeHistory from './TradeHistory';
 import AccountInfo from './AccountInfo';
 import CandlestickChart from './CandlestickChart';
 import TradingBot from './TradingBot';
+import MLPredictions from './MLPredictions';
 import io from 'socket.io-client';
 import './Dashboard.css';
 
@@ -205,6 +206,8 @@ const Dashboard = () => {
         return <TradeHistory socket={socket} />;
       case 'bot':
         return <TradingBot socket={socket} />;
+      case 'ml':
+        return <MLPredictions />;
       case 'chart':
       default:
         return (
@@ -294,6 +297,16 @@ const Dashboard = () => {
                 <path d="M9 12v6a3 3 0 0 0 6 0v-6"></path>
               </svg>
               <span>Trading Bot</span>
+            </button>
+            <button 
+              className={`tab-button ${activeTab === 'ml' ? 'active' : ''}`} 
+              onClick={() => switchTab('ml')}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M12 1v6m0 6v6m11-7h-6m-6 0H1m15.5-6.5L17 8l-1.5-1.5M8 17l-1.5 1.5L5 17m0-10l1.5-1.5L8 7m9 9l1.5 1.5L17 16"></path>
+              </svg>
+              <span>ML Predictions</span>
             </button>
           </nav>
           

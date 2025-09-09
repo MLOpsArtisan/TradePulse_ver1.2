@@ -615,6 +615,16 @@ class CombinedStrategy(BaseStrategy):
 # 🚀 ADVANCED STRATEGY EXAMPLES - ADD YOUR NEW STRATEGIES HERE
 # ============================================================================
 
+# Import ML Strategy
+try:
+    from .ml_strategy import get_ml_strategy
+    from .enhanced_ml_strategy import get_enhanced_ml_strategy
+    from .pure_ml_strategy import get_pure_ml_strategy
+    ML_STRATEGY_AVAILABLE = True
+except ImportError:
+    ML_STRATEGY_AVAILABLE = False
+    log.warning("ML Strategy not available - TensorFlow dependencies missing")
+
 class BollingerBandsStrategy(BaseStrategy):
     """Bollinger Bands Strategy - Price reversal at bands"""
     
@@ -942,6 +952,9 @@ AVAILABLE_STRATEGIES = {
     'vwap_strategy': VolumeWeightedStrategy,  # New VWAP strategy
     'test_strategy': TestStrategy,  # Test strategy for debugging
     'always_signal': AlwaysSignalStrategy,  # Always generates signals
+    'ml_strategy': 'ml_strategy',  # ML Neural Network strategy (special handling)
+    'enhanced_ml_strategy': 'enhanced_ml_strategy',  # Enhanced ML strategy (more aggressive)
+    'pure_ml_strategy': 'pure_ml_strategy',  # Pure ML strategy (respects original training)
     'default': AlwaysSignalStrategy  # Default to always signal for testing
 }
 
@@ -1012,6 +1025,30 @@ def get_strategy(strategy_name: str, symbol: str = "ETHUSD", config: Dict = None
     elif strategy_name == 'combined_strategy':
         # Combined strategy uses other strategies internally
         return strategy_class(symbol)
+    
+    elif strategy_name == 'ml_strategy':
+        # ML Neural Network strategy - special handling
+        if ML_STRATEGY_AVAILABLE:
+            return get_ml_strategy(symbol, config or {})
+        else:
+            log.error("ML Strategy requested but TensorFlow not available. Falling back to RSI strategy.")
+            return RSIStrategy(symbol, diagnostic_mode=diagnostic_mode)
+    
+    elif strategy_name == 'enhanced_ml_strategy':
+        # Enhanced ML Neural Network strategy - more aggressive
+        if ML_STRATEGY_AVAILABLE:
+            return get_enhanced_ml_strategy(symbol, config or {})
+        else:
+            log.error("Enhanced ML Strategy requested but TensorFlow not available. Falling back to RSI strategy.")
+            return RSIStrategy(symbol, diagnostic_mode=diagnostic_mode)
+    
+    elif strategy_name == 'pure_ml_strategy':
+        # Pure ML Neural Network strategy - respects original training
+        if ML_STRATEGY_AVAILABLE:
+            return get_pure_ml_strategy(symbol, config or {})
+        else:
+            log.error("Pure ML Strategy requested but TensorFlow not available. Falling back to RSI strategy.")
+            return RSIStrategy(symbol, diagnostic_mode=diagnostic_mode)
     
     else:
         # Default instantiation for unknown strategies

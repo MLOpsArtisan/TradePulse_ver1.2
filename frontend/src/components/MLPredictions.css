@@ -1,0 +1,346 @@
+.ml-predictions {
+  background: #1a1a1a;
+  border-radius: 8px;
+  padding: 20px;
+  margin: 20px 0;
+  color: #ffffff;
+  border: 1px solid #333;
+}
+
+.ml-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  border-bottom: 1px solid #333;
+  padding-bottom: 15px;
+}
+
+.ml-header h3 {
+  margin: 0;
+  color: #00ff88;
+  font-size: 1.2em;
+}
+
+.ml-controls {
+  display: flex;
+  gap: 10px;
+}
+
+.btn-predict, .btn-auto, .btn-train {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9em;
+  transition: all 0.3s ease;
+}
+
+.btn-predict {
+  background: #007bff;
+  color: white;
+}
+
+.btn-predict:hover:not(:disabled) {
+  background: #0056b3;
+}
+
+.btn-auto {
+  background: #6c757d;
+  color: white;
+}
+
+.btn-auto.active {
+  background: #28a745;
+}
+
+.btn-auto:hover:not(:disabled) {
+  background: #545b62;
+}
+
+.btn-auto.active:hover:not(:disabled) {
+  background: #1e7e34;
+}
+
+.btn-train {
+  background: #ff6b35;
+  color: white;
+}
+
+.btn-train:hover:not(:disabled) {
+  background: #e55a2b;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.ml-status {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 15px;
+  margin-bottom: 20px;
+  padding: 15px;
+  background: #2a2a2a;
+  border-radius: 6px;
+}
+
+.status-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.status-item .label {
+  font-weight: 500;
+  color: #ccc;
+}
+
+.status.loaded {
+  color: #00ff88;
+}
+
+.status.not-loaded {
+  color: #ff4444;
+}
+
+.status.available {
+  color: #00ff88;
+}
+
+.status.unavailable {
+  color: #ff4444;
+}
+
+.features {
+  color: #00bfff;
+  font-weight: 500;
+}
+
+.error-message {
+  background: #ff444420;
+  border: 1px solid #ff4444;
+  border-radius: 4px;
+  padding: 12px;
+  margin: 15px 0;
+  color: #ff6b6b;
+}
+
+.training-section {
+  text-align: center;
+  padding: 20px;
+  background: #2a2a2a;
+  border-radius: 6px;
+  margin: 15px 0;
+}
+
+.training-section p {
+  margin-bottom: 15px;
+  color: #ccc;
+}
+
+.prediction-results {
+  background: #2a2a2a;
+  border-radius: 6px;
+  padding: 20px;
+  margin-top: 20px;
+}
+
+.main-prediction {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 25px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid #444;
+}
+
+.signal-display {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.signal-badge {
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-weight: bold;
+  font-size: 1.1em;
+  color: #000;
+  min-width: 60px;
+  text-align: center;
+}
+
+.confidence {
+  color: #ccc;
+  font-size: 0.9em;
+}
+
+.expected-return {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.expected-return .label {
+  color: #ccc;
+  font-size: 0.9em;
+  margin-bottom: 5px;
+}
+
+.expected-return .value {
+  font-size: 1.2em;
+  font-weight: bold;
+}
+
+.expected-return .value.positive {
+  color: #00ff88;
+}
+
+.expected-return .value.negative {
+  color: #ff4444;
+}
+
+.probabilities {
+  margin-bottom: 25px;
+}
+
+.probabilities h4 {
+  margin: 0 0 15px 0;
+  color: #00bfff;
+  font-size: 1em;
+}
+
+.prob-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.prob-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.prob-label {
+  min-width: 50px;
+  font-size: 0.8em;
+  color: #ccc;
+}
+
+.prob-container {
+  flex: 1;
+  position: relative;
+  height: 20px;
+  background: #444;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.prob-fill {
+  height: 100%;
+  border-radius: 10px;
+  transition: width 0.3s ease;
+}
+
+.prob-value {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.8em;
+  color: #000;
+  font-weight: bold;
+}
+
+.future-ohlc {
+  margin-bottom: 20px;
+}
+
+.future-ohlc h4 {
+  margin: 0 0 15px 0;
+  color: #00bfff;
+  font-size: 1em;
+}
+
+.ohlc-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.ohlc-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: #333;
+  border-radius: 4px;
+}
+
+.ohlc-label {
+  color: #ccc;
+  font-size: 0.9em;
+}
+
+.ohlc-value {
+  color: #00bfff;
+  font-weight: 500;
+}
+
+.current-price {
+  text-align: center;
+  padding: 10px;
+  background: #333;
+  border-radius: 4px;
+  color: #ffaa00;
+  font-weight: 500;
+}
+
+.prediction-meta {
+  text-align: center;
+  padding-top: 15px;
+  border-top: 1px solid #444;
+  color: #888;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .ml-header {
+    flex-direction: column;
+    gap: 15px;
+    align-items: stretch;
+  }
+
+  .ml-controls {
+    justify-content: center;
+  }
+
+  .main-prediction {
+    flex-direction: column;
+    gap: 15px;
+    align-items: stretch;
+  }
+
+  .expected-return {
+    align-items: center;
+  }
+
+  .ohlc-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Loading animation */
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.5; }
+  100% { opacity: 1; }
+}
+
+.btn-predict:disabled,
+.btn-train:disabled {
+  animation: pulse 1.5s infinite;
+}

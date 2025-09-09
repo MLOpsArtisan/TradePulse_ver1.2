@@ -25,6 +25,9 @@ from collections import Counter # Added for logging client counts by timeframe
 from trading_bot.bot_manager import TradingBotManager
 from trading_bot.hft_manager import HFTTradingBotManager
 
+# Import ML API
+from ml_api import ml_api
+
 # Global bot managers dictionary
 bot_managers = {}  # bot_id -> manager instance (candle or hft)
 
@@ -117,6 +120,10 @@ socketio = SocketIO(
     reconnection_delay_max=5  # Maximum delay between reconnections
 )
 log.info(f"Flask-SocketIO initialized with transports: {socketio.server.eio.transports}")
+
+# Register ML API Blueprint
+app.register_blueprint(ml_api)
+log.info("ML API Blueprint registered successfully")
 
 # --- Simple user management for web app access (separate from MT5 authentication) ---
 # MT5 handles its own authentication via mt5.initialize(), but we need web app login
